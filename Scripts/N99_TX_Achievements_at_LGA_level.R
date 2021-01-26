@@ -26,28 +26,22 @@ library(extrafont)
   # Country name
   cntry <- "Nigeria"
 
-  # file
-  file_targets <- list.files(
-    path = data,
-    pattern = "^Site Tool_Nig.*_\\d{14}_F.*.xlsx$",
-    full.names = TRUE
-  )
 
   # Latest MSD PSNU x IM File
   file_msd <- list.files(
-    path = merdata,
-    pattern = "MER_S.*_PSNU_IM_.*_\\d{8}_v.*_N.*.zip",
-    full.names = TRUE
-  ) %>%
+      path = merdata,
+      pattern = "MER_S.*_PSNU_IM_.*_\\d{8}_v.*_N.*.zip",
+      full.names = TRUE
+    ) %>%
     sort() %>%
     last()
 
   # Latest MSD Site x IM File
   file_msd_sites <- list.files(
-    path = merdata,
-    pattern = "MER_S.*_Site_IM_.*_\\d{8}_v.*_N.*.zip",
-    full.names = TRUE
-  ) %>%
+      path = merdata,
+      pattern = "MER_S.*_Site_IM_.*_\\d{8}_v.*_N.*.zip",
+      full.names = TRUE
+    ) %>%
     sort() %>%
     last()
 
@@ -64,101 +58,117 @@ library(extrafont)
 
 # DATA ----
 
-  # Geodata
-  spdf_pepfar <- file_shp %>% read_sf()
+  # Geodata ----
 
-  spdf_pepfar %>% glimpse()
+  # PEPFAR Geodata
+    spdf_pepfar <- file_shp %>% read_sf()
 
   # OUs
-  df_ous <- glamr::identify_ouuids(datim_user(), datim_pwd())
+    df_ous <- glamr::identify_ouuids(datim_user(), datim_pwd())
 
-  df_ous %>% glimpse()
-
-  ou_uid <- df_ous %>%
-    dplyr::filter(type == "OU", country == cntry) %>%
-    pull(uid)
-
-  ou_uid
+  # OU uid
+    ou_uid <- df_ous %>%
+      dplyr::filter(type == "OU", country == cntry) %>%
+      pull(uid)
 
   # Levels
-  df_lvls <- glamr::identify_levels(datim_user(), datim_pwd())
+    df_lvls <- glamr::identify_levels(datim_user(), datim_pwd())
 
-  df_lvls %>% glimpse()
-
-  df_lvls %>%
-    filter(operatingunit == cntry) %>%
-    glimpse()
+  # Comm level
+    comm_lvl <- df_lvls %>%
+      filter(operatingunit == cntry) %>%
+      pull(community)
 
   # Orgs
-  locs <- gisr::extract_locations(cntry, datim_user(), datim_pwd())
+    df_locs <- gisr::extract_locations(cntry, datim_user(), datim_pwd())
 
-  locs %>% extract_facilities()
-  #locs %>% extract_
+  # Community uids
+    comm_uids <- df_locs %>%
+      filter(level == comm_lvl) %>%
+      pull(id)
 
-  ids <- locs %>% filter(level == 6) %>% pull(id)
-
-  nga_comm <- spdf_pepfar %>%
-    filter(uid %in% ids)
+  # Community boundaries
+    spdf_nga_comm <- spdf_pepfar %>%
+      filter(uid %in% ids)
 
   # NGA Boundaries
-  spdf_pepfar %>%
-    filter(uid == ou_uid) %>%
-    plot(col = NA, main = cntry)
+    spdf_nga_ou <- spdf_pepfar %>%
+      filter(uid == ou_uid)
 
-  gisr::get_admin0(cntry) %>%
-    dplyr::select(admin) %>%
-    plot()
+    spdf_nga_cntry <- get_admin0(cntry) %>%
+      dplyr::select(admin)
 
-  # Basemap
-  #terrain_map(cntry, mask = TRUE)
-  terr <- terrain_map(cntry, terr_path = rasdata)
-  terrain_map(cntry, terr_path = rasdata, mask = TRUE)
-  terrain_map(cntry, terr_path = rasdata, add_neighbors = TRUE) # update extend boundaries
+    spdf_nga_states <- get_admin1(cntry) %>%
+      dplyr::select(state = name_de) %>%
+      dplyr::mutate(state = if_else(
+        state == "Federal Capital Territory",
+        "FCT",
+        state))
 
 
   # MSD Data
 
   # Sites
-  df_msd_sites <- file_msd_sites %>%
-    read_msd() %>%
-    reshape_msd(clean = TRUE)
-
-  df_msd_sites %>% glimpse()
-
+    df_msd_sites <- file_msd_sites %>%
+      read_msd() %>%
+      reshape_msd(clean = TRUE)
 
   # MSD Community TX
-  df_comm <- df_msd_sites %>%
-    clean_agency() %>%
-    filter(operatingunit == country,
-           indicator %in% c("TX_CURR", "TX_NEW"),
-           period_type %in% c("targets", "cumulative"),
-           standardizeddisaggregate == "Total Numerator",
-           fundingagency != "Dedup",
-           communityuid != "?") %>%
-    group_by(fundingagency, snu1, psnuuid, psnu,
-             communityuid, community, indicator, period, period_type) %>%
-    summarise_if(is.numeric, ~sum(., na.rm = TRUE)) %>%
-    ungroup()
+    df_msd_comm <- df_msd_sites %>%
+      clean_agency() %>%
+      filter(operatingunit == country,
+             period == "FY20",
+             indicator %in% c("TX_CURR", "TX_NEW"),
+             period_type %in% c("targets", "cumulative"),
+             standardizeddisaggregate == "Total Numerator",
+             fundingagency != "Dedup",
+             communityuid != "?") %>%
+      group_by(fundingagency, snu1, psnuuid, psnu,
+               communityuid, community, indicator, period, period_type) %>%
+      summarise_if(is.numeric, ~sum(., na.rm = TRUE)) %>%
+      ungroup() %>%
+      clean_column("community") %>%
+      pivot_wider(names_from = period_type, values_from = val) %>%
+      mutate(achieve = cumulative / targets)
 
-  df_comm <- df_sites %>%
-    clean_column("community") %>%
-    glimpse()
+    df_msd_comm %>% View()
 
-  df_comm %>% glimpse()
 
-  df_geom <- spdf_pepfar %>%
-    left_join(df_comm %>%
-      filter(fundingagency == "USAID",
-           indicator == "TX_CURR",
-           period == "FY20"),
-      by = c("uid" = "communityuid")
-    ) %>%
-    filter(!is.na(indicator))
+  # MSD Geodata
+    df_geo <- spdf_pepfar %>%
+      left_join(df_msd_comm, by = c("uid" = "communityuid")) %>%
+      filter(!is.na(achieve))
 
+  # Round max achievements to 100%
+    df_geo <- df_geo %>%
+      mutate(achieve = if_else(achieve > 1, 1, achieve))
+
+# VIZ ----
+
+  # Basemap
+  terr <- terrain_map(cntry, terr_path = rasdata, mask = TRUE)
+
+  terr
+
+  # Thematic maps - achievements by agency and indicator
   terr +
-    geom_sf(data = df_geom, aes(fill = val)) +
-    geom_sf(data = nga_comm, fill = NA, color = grey10k) +
-    facet_wrap(~period_type) +
-    scale_fill_si(palette = "genoas", reverse = T, discrete = F) +
+    geom_sf(data = df_geo, aes(fill = achieve), color = grey20k, size = .2) +
+    geom_sf(data = spdf_nga_comm, fill = NA, color = grey20k, size = .2) +
+    geom_sf(data = spdf_nga_states, fill = NA, linetype = "dotted") +
+    geom_sf(data = spdf_nga_cntry, color = "white", fill = grey20k, size = 2, alpha = 0.25) +
+    geom_sf(data = spdf_nga_cntry, fill = NA, color = grey80k) +
+    geom_sf_text(data = spdf_nga_states, aes(label = state), color = grey70k, size = 2) +
+    facet_wrap(fundingagency ~ indicator) +
+    scale_fill_si(palette = "genoas", reverse = T, discrete = F,
+                  labels = scales::percent_format(accuracy = 1),
+                  limits = c(0, 1)) +
+    labs(title = "NIGERIA - FY20 TX Achievements by LGAs",
+         subtitle = "Achievements greater than 100% have been rounded back to 100%.",
+         caption = paste0("Data source: MSD FY20Q4c\nOHA/SIEI - Produced on ", format(Sys.Date(), "%Y-%m-%d"))) +
     si_style_map()
+
+  # Save output
+  ggsave(file.path(graphics, paste0("Nigeria - FY20 TX Achievements by LGAs - ", format(Sys.Date(), "%Y-%m-%d"), ".png")),
+         plot = last_plot(), scale = 1.3, dpi = 350,
+         width = 10, height = 7, units = "in")
 
