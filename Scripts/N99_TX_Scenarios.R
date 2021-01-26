@@ -349,84 +349,87 @@ library(extrafont)
 
 
 
-  # PSNU - FY20
-  df_msd <- file_msd %>%
-    read_msd() %>%
-    reshape_msd(clean = TRUE) %>%
-    filter(operatingunit == country)
-
-  df_msd %>% glimpse()
-
-  df_msd_s <- df_msd %>%
-    clean_agency() %>%
-    filter(operatingunit == country,
-           indicator %in% c("TX_CURR", "TX_NEW"),
-           #period_type == "results",
-           standardizeddisaggregate == "Total Numerator",
-           fundingagency != "Dedup") %>%
-    group_by(fundingagency, snu1, indicator, period) %>%
-    summarise_if(is.numeric, ~sum(., na.rm = TRUE)) %>%
-    ungroup()
-
-  df_msd_s %>% glimpse()
-
-  # 6Qtrs Scenario
-  df_msd_s1_tx_curr <- df_msd_s %>%
-    filter(indicator == "TX_CURR",
-           period %in% c("FY19Q2", "FY19Q4") | period %in% c("FY20Q4", "FY21Q1")) %>%
-    arrange(fundingagency, indicator, snu1) %>%
-    pivot_wider(names_from = period, values_from = val) %>%
-    mutate(
-      FY19Q2_shift = case_when(
-        snu1 == "Rivers" & fundingagency == "USAID" ~ -(.$FY19Q2[snu1 == "Rivers" & fundingagency == "USAID"]),
-        snu1 == "Rivers" & fundingagency == "CDC" ~ +(.$FY19Q2[snu1 == "Rivers" & fundingagency == "USAID"]),
-        snu1 == "Kano" & fundingagency == "USAID" ~ +(.$FY19Q2[snu1 == "Kano" & fundingagency == "CDC"]),
-        snu1 == "Kano" & fundingagency == "CDC" ~ -(.$FY19Q2[snu1 == "Kano" & fundingagency == "CDC"]),
-        TRUE ~ NA_real_),
-      FY19Q4_shift = case_when(
-        snu1 == "Anambra" & fundingagency == "USAID" ~ -(.$FY19Q4[snu1 == "Anambra" & fundingagency == "USAID"]),
-        TRUE ~ NA_real_),
-      FY19Q2_revised = case_when(
-        snu1 == "Rivers" & fundingagency == "CDC" ~ .$FY19Q2[snu1 == "Rivers" & fundingagency == "USAID"],
-        snu1 == "Rivers" & fundingagency == "USAID" ~ NA_real_,
-        snu1 == "Kano" & fundingagency == "USAID" ~ .$FY19Q2[snu1 == "Kano" & fundingagency == "USAID"] + .$FY19Q2[snu1 == "Kano" & fundingagency == "CDC"],
-        snu1 == "Kano" & fundingagency == "CDC" ~ NA_real_,
-        TRUE ~ FY19Q2),
-      FY19Q4_revised = case_when(
-        snu1 == "Anambra" & fundingagency == "USAID" ~ NA_real_,
-        TRUE ~ FY19Q4)
-    ) %>%
-    relocate(FY19Q2_shift, FY19Q2_revised, .after = FY19Q2) %>%
-    relocate(FY19Q4_shift, FY19Q4_revised, .after = FY19Q4) %>%
-    mutate(FY20_NET_NEW = FY20Q4 - FY19Q2_revised) %>% View()
-
-
-  df_msd_s1_tx_new <- df_msd_s %>%
-    filter(indicator == "TX_CURR",
-           period %in% c("FY19Q2", "FY19Q4") | str_detect(period, "FY20")) %>%
-    arrange(fundingagency, indicator, snu1) %>%
-    pivot_wider(names_from = period, values_from = val) %>%
-    mutate(
-      FY19Q2_shift = case_when(
-        snu1 == "Rivers" & fundingagency == "USAID" ~ -(.$FY19Q2[snu1 == "Rivers" & fundingagency == "USAID"]),
-        snu1 == "Rivers" & fundingagency == "CDC" ~ +(.$FY19Q2[snu1 == "Rivers" & fundingagency == "USAID"]),
-        snu1 == "Kano" & fundingagency == "USAID" ~ +(.$FY19Q2[snu1 == "Kano" & fundingagency == "CDC"]),
-        snu1 == "Kano" & fundingagency == "CDC" ~ -(.$FY19Q2[snu1 == "Kano" & fundingagency == "CDC"]),
-        TRUE ~ NA_real_),
-      FY19Q4_shift = case_when(
-        snu1 == "Anambra" & fundingagency == "USAID" ~ -(.$FY19Q4[snu1 == "Anambra" & fundingagency == "USAID"]),
-        TRUE ~ NA_real_),
-      FY19Q2_revised = case_when(
-        snu1 == "Rivers" & fundingagency == "CDC" ~ .$FY19Q2[snu1 == "Rivers" & fundingagency == "USAID"],
-        snu1 == "Rivers" & fundingagency == "USAID" ~ NA_real_,
-        snu1 == "Kano" & fundingagency == "USAID" ~ .$FY19Q2[snu1 == "Kano" & fundingagency == "USAID"] + .$FY19Q2[snu1 == "Kano" & fundingagency == "CDC"],
-        snu1 == "Kano" & fundingagency == "CDC" ~ NA_real_,
-        TRUE ~ FY19Q2),
-      FY19Q4_revised = case_when(
-        snu1 == "Anambra" & fundingagency == "USAID" ~ NA_real_,
-        TRUE ~ FY19Q4)
-    ) %>%
-    relocate(FY19Q2_shift, FY19Q2_revised, .after = FY19Q2) %>%
-    relocate(FY19Q4_shift, FY19Q4_revised, .after = FY19Q4)
+  # # PSNU - FY20
+  # df_msd <- file_msd %>%
+  #   read_msd() %>%
+  #   reshape_msd(clean = TRUE) %>%
+  #   filter(operatingunit == country)
+  #
+  # df_msd %>% glimpse()
+  #
+  # df_msd %>%
+  #   filter(str_dete)
+  #
+  # df_msd_s <- df_msd %>%
+  #   clean_agency() %>%
+  #   filter(operatingunit == country,
+  #          indicator %in% c("TX_CURR", "TX_NEW"),
+  #          #period_type == "results",
+  #          standardizeddisaggregate == "Total Numerator",
+  #          fundingagency != "Dedup") %>%
+  #   group_by(fundingagency, snu1, indicator, period) %>%
+  #   summarise_if(is.numeric, ~sum(., na.rm = TRUE)) %>%
+  #   ungroup()
+  #
+  # df_msd_s %>% glimpse()
+  #
+  # # 6Qtrs Scenario
+  # df_msd_s1_tx_curr <- df_msd_s %>%
+  #   filter(indicator == "TX_CURR",
+  #          period %in% c("FY19Q2", "FY19Q4") | period %in% c("FY20Q4", "FY21Q1")) %>%
+  #   arrange(fundingagency, indicator, snu1) %>%
+  #   pivot_wider(names_from = period, values_from = val) %>%
+  #   mutate(
+  #     FY19Q2_shift = case_when(
+  #       snu1 == "Rivers" & fundingagency == "USAID" ~ -(.$FY19Q2[snu1 == "Rivers" & fundingagency == "USAID"]),
+  #       snu1 == "Rivers" & fundingagency == "CDC" ~ +(.$FY19Q2[snu1 == "Rivers" & fundingagency == "USAID"]),
+  #       snu1 == "Kano" & fundingagency == "USAID" ~ +(.$FY19Q2[snu1 == "Kano" & fundingagency == "CDC"]),
+  #       snu1 == "Kano" & fundingagency == "CDC" ~ -(.$FY19Q2[snu1 == "Kano" & fundingagency == "CDC"]),
+  #       TRUE ~ NA_real_),
+  #     FY19Q4_shift = case_when(
+  #       snu1 == "Anambra" & fundingagency == "USAID" ~ -(.$FY19Q4[snu1 == "Anambra" & fundingagency == "USAID"]),
+  #       TRUE ~ NA_real_),
+  #     FY19Q2_revised = case_when(
+  #       snu1 == "Rivers" & fundingagency == "CDC" ~ .$FY19Q2[snu1 == "Rivers" & fundingagency == "USAID"],
+  #       snu1 == "Rivers" & fundingagency == "USAID" ~ NA_real_,
+  #       snu1 == "Kano" & fundingagency == "USAID" ~ .$FY19Q2[snu1 == "Kano" & fundingagency == "USAID"] + .$FY19Q2[snu1 == "Kano" & fundingagency == "CDC"],
+  #       snu1 == "Kano" & fundingagency == "CDC" ~ NA_real_,
+  #       TRUE ~ FY19Q2),
+  #     FY19Q4_revised = case_when(
+  #       snu1 == "Anambra" & fundingagency == "USAID" ~ NA_real_,
+  #       TRUE ~ FY19Q4)
+  #   ) %>%
+  #   relocate(FY19Q2_shift, FY19Q2_revised, .after = FY19Q2) %>%
+  #   relocate(FY19Q4_shift, FY19Q4_revised, .after = FY19Q4) %>%
+  #   mutate(FY20_NET_NEW = FY20Q4 - FY19Q2_revised) %>% View()
+  #
+  #
+  # df_msd_s1_tx_new <- df_msd_s %>%
+  #   filter(indicator == "TX_CURR",
+  #          period %in% c("FY19Q2", "FY19Q4") | str_detect(period, "FY20")) %>%
+  #   arrange(fundingagency, indicator, snu1) %>%
+  #   pivot_wider(names_from = period, values_from = val) %>%
+  #   mutate(
+  #     FY19Q2_shift = case_when(
+  #       snu1 == "Rivers" & fundingagency == "USAID" ~ -(.$FY19Q2[snu1 == "Rivers" & fundingagency == "USAID"]),
+  #       snu1 == "Rivers" & fundingagency == "CDC" ~ +(.$FY19Q2[snu1 == "Rivers" & fundingagency == "USAID"]),
+  #       snu1 == "Kano" & fundingagency == "USAID" ~ +(.$FY19Q2[snu1 == "Kano" & fundingagency == "CDC"]),
+  #       snu1 == "Kano" & fundingagency == "CDC" ~ -(.$FY19Q2[snu1 == "Kano" & fundingagency == "CDC"]),
+  #       TRUE ~ NA_real_),
+  #     FY19Q4_shift = case_when(
+  #       snu1 == "Anambra" & fundingagency == "USAID" ~ -(.$FY19Q4[snu1 == "Anambra" & fundingagency == "USAID"]),
+  #       TRUE ~ NA_real_),
+  #     FY19Q2_revised = case_when(
+  #       snu1 == "Rivers" & fundingagency == "CDC" ~ .$FY19Q2[snu1 == "Rivers" & fundingagency == "USAID"],
+  #       snu1 == "Rivers" & fundingagency == "USAID" ~ NA_real_,
+  #       snu1 == "Kano" & fundingagency == "USAID" ~ .$FY19Q2[snu1 == "Kano" & fundingagency == "USAID"] + .$FY19Q2[snu1 == "Kano" & fundingagency == "CDC"],
+  #       snu1 == "Kano" & fundingagency == "CDC" ~ NA_real_,
+  #       TRUE ~ FY19Q2),
+  #     FY19Q4_revised = case_when(
+  #       snu1 == "Anambra" & fundingagency == "USAID" ~ NA_real_,
+  #       TRUE ~ FY19Q4)
+  #   ) %>%
+  #   relocate(FY19Q2_shift, FY19Q2_revised, .after = FY19Q2) %>%
+  #   relocate(FY19Q4_shift, FY19Q4_revised, .after = FY19Q4)
 
 
