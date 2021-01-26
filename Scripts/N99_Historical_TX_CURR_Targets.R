@@ -104,6 +104,7 @@ library(extrafont)
     distinct(period) %>%
     prinf()
 
+  # TX Data
   df_msd_tx <- df_msd %>%
     clean_agency() %>%
     filter(indicator %in% c("TX_CURR", "TX_NEW"),
@@ -161,6 +162,22 @@ library(extrafont)
                                     "_", format(Sys.Date(), "%Y%m%d"),
                                     ".csv")), na = "")
 
+  # OU TX Data
+  df_msd_cntry_tx <- df_msd %>%
+    clean_agency() %>%
+    filter(indicator %in% c("TX_CURR", "TX_NEW"),
+           standardizeddisaggregate == "Total Numerator",
+           fundingagency != "Dedup") %>%
+    group_by(indicator, period, period_type) %>%
+    summarise_if(is.numeric, ~sum(., na.rm = TRUE)) %>%
+    ungroup() %>%
+    filter(period_type %in% c("cumulative", "targets"),
+           !period %in% c("FY15", "FY16", "FY21")) %>%
+    pivot_wider(names_from = period_type, values_from = val) %>%
+    mutate(achieve = round(cumulative / targets * 100, 2))
+
+  df_msd_cntry_tx %>% glimpse()
+
 
   # Pre-datim data
   df <- file_pre_datim %>% vroom() %>%
@@ -179,6 +196,10 @@ library(extrafont)
     pivot_wider(names_from = "measure_name", values_from = "measure_value") %>%
     mutate(Achieve = Results / Targets * 100)
 
+  df_tx_nga %>% glimpse()
+  df_tx_nga %>% View()
+
+
   # Export targets tbl
   write_csv(x = df_tx_nga,
             file = file.path(dataout,
@@ -187,20 +208,33 @@ library(extrafont)
                                     "_", format(Sys.Date(), "%Y%m%d"),
                                     ".csv")), na = "")
 
-  df_tx_nga2 <- df_tx_nga %>%
-    pivot_longer(cols = Results:Achieve,
-                 names_to = "measure_name",
-                 values_to = "measure_value")
+  # Align with MSD
+  df_cntry_tx <- df_tx_nga %>%
+    select(indicator = indicator_short_name,
+           period = year,
+           cumulative = Results,
+           targets = Targets,
+           achieve = Achieve) %>%
+    mutate(
+      indicator = case_when(
+        indicator == "Patients Currently Receiving ART" ~ "TX_CURR",
+        indicator == "Patients Newly Receiving ART" ~ "TX_NEW",
+        TRUE ~ NA_character_
+      ),
+      period = paste0("FY", str_sub(period, 3, 4)))
 
-  df_tx_nga2 %>%
-    ggplot(aes(year, measure_value, group = measure_name, fill = measure_name)) +
-    geom_col(position = position_dodge()) +
-    coord_flip()
+  df_cntry_tx %>% glimpse()
+
+  df_cntry_tx <- df_cntry_tx %>%
+    bind_rows(df_msd_cntry_tx)
+
+# VIZ ----
 
   tmax <- df_tx_nga %>%
     filter(!is.na(Targets)) %>%
     pull(Targets) %>%
     max()
+
 
   df_tx_nga %>%
     ggplot(aes(x = year)) +
@@ -228,5 +262,41 @@ library(extrafont)
 
   # Save output
   ggsave(file.path(graphics, paste0("Nigeria - Historical TX Achievements FY04_to_FY16 - ", format(Sys.Date(), "%Y-%m-%d"), ".png")),
+         plot = last_plot(), scale = 1.3, dpi = 350,
+         width = 10, height = 7, units = "in")
+
+
+  # Entire history
+  htmax <- df_cntry_tx %>%
+    filter(!is.na(targets)) %>%
+    pull(targets) %>%
+    max()
+
+  df_cntry_tx %>%
+    mutate(period = as.integer(str_replace(period, "FY", "20"))) %>%
+    ggplot(aes(x = period)) +
+    geom_line(aes(y = targets, group = 1), color = usaid_red) +
+    geom_area(aes(y = targets), fill = usaid_red, alpha = .7) +
+    geom_point(aes(y = targets), fill = "white", color = usaid_red,
+               shape = 21, size = 2) +
+    geom_line(aes(y = cumulative, group = 1), color = "white") +
+    geom_area(aes(y = cumulative), fill = usaid_lightblue, alpha = .7) +
+    geom_point(aes(y = cumulative), fill = "white", color = usaid_lightblue,
+               shape = 21, size = 2) +
+    geom_text(aes(y = cumulative, label = paste0(round(achieve), "%")),
+              color = usaid_darkgrey, nudge_x = .5, size = 3) +
+    scale_fill_si(palette = "genoas") +
+    scale_size_area() +
+    scale_y_continuous(labels = comma, breaks = seq(0, 1300000, 200000)) +
+    scale_x_continuous(breaks = seq(2004, 2020, 2)) +
+    facet_wrap(~ indicator) +
+    si_style_ygrid() +
+    labs(x = "", y = "",
+         title = "NIGERIA - Historical TX Achievements (FY04 to FY20)",
+         subtitle = "Targets are in Red and results in light blue. There was no target set in 2004",
+         caption = paste0("Data source: Historical data from DATIM\nOHA/SIEI - Produced on: ", format(Sys.Date(), "%Y%m%d")))
+
+  # Save output
+  ggsave(file.path(graphics, paste0("Nigeria - Historical TX Achievements FY04_to_FY20 - ", format(Sys.Date(), "%Y-%m-%d"), ".png")),
          plot = last_plot(), scale = 1.3, dpi = 350,
          width = 10, height = 7, units = "in")
