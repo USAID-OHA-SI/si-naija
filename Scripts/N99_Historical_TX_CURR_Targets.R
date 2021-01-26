@@ -55,6 +55,15 @@ library(extrafont)
     sort() %>%
     last()
 
+  # Pre-FY15 Data
+  file_pre_datim <- list.files(
+      path = data,
+      pattern = "Country and Regional Targets_Results 2004-2016.csv",
+      full.names = TRUE
+    ) %>%
+    sort() %>%
+    last()
+
 # DATA ----------------------------------------------------
 
   # MSD Data
@@ -153,3 +162,71 @@ library(extrafont)
                                     ".csv")), na = "")
 
 
+  # Pre-datim data
+  df <- file_pre_datim %>% vroom() %>%
+    clean_names()
+
+  df %>% glimpse()
+
+  df_tx_nga <- df %>%
+    filter(country_region == "Nigeria",
+           bundle == "HIV Treatment",
+           str_detect(indicator_short_name,
+                      "Currently Receiving|Newly Receiving"),
+           dsd_ta == "DSD+TA") %>%
+    mutate(measure_value = as.integer(measure_value)) %>%
+    arrange(year, indicator_short_name) %>%
+    pivot_wider(names_from = "measure_name", values_from = "measure_value") %>%
+    mutate(Achieve = Results / Targets * 100)
+
+  # Export targets tbl
+  write_csv(x = df_tx_nga,
+            file = file.path(dataout,
+                             paste0(country,
+                                    " - Historical Treatment Data - Pre Datim",
+                                    "_", format(Sys.Date(), "%Y%m%d"),
+                                    ".csv")), na = "")
+
+  df_tx_nga2 <- df_tx_nga %>%
+    pivot_longer(cols = Results:Achieve,
+                 names_to = "measure_name",
+                 values_to = "measure_value")
+
+  df_tx_nga2 %>%
+    ggplot(aes(year, measure_value, group = measure_name, fill = measure_name)) +
+    geom_col(position = position_dodge()) +
+    coord_flip()
+
+  tmax <- df_tx_nga %>%
+    filter(!is.na(Targets)) %>%
+    pull(Targets) %>%
+    max()
+
+  df_tx_nga %>%
+    ggplot(aes(x = year)) +
+    geom_line(aes(y = Targets, group = country_region), color = usaid_red) +
+    geom_area(aes(y = Targets), fill = usaid_red, alpha = .7) +
+    geom_point(aes(y = Targets), fill = "white", color = usaid_red,
+               shape = 21, size = 3) +
+    geom_line(aes(y = Results, group = country_region), color = "white") +
+    geom_area(aes(y = Results), fill = usaid_lightblue, alpha = .7) +
+    geom_point(aes(y = Results), fill = "white", color = usaid_lightblue,
+               shape = 21, size = 3) +
+    geom_text(aes(y = Results, label = paste0(round(Achieve), "%")),
+              color = usaid_darkgrey, nudge_x = .5, size = 4) +
+    scale_fill_si(palette = "genoas") +
+    scale_size_area() +
+    scale_y_continuous(labels = comma, breaks = seq(0, tmax, 100000)) +
+    scale_x_continuous(breaks = seq(2004, 2016, 1)) +
+    facet_wrap(~ indicator_short_name) +
+    si_style_ygrid() +
+    labs(x = "", y = "",
+         title = "NIGERIA - Historical TX Achievements (FY04 to FY16)",
+         subtitle = "Targets are in Red and results in light blue. There was no target set in 2004",
+         caption = paste0("Data source: Historical data from DATIM\nOHA/SIEI - Produced on: ", format(Sys.Date(), "%Y%m%d")))
+
+
+  # Save output
+  ggsave(file.path(graphics, paste0("Nigeria - Historical TX Achievements FY04_to_FY16 - ", format(Sys.Date(), "%Y-%m-%d"), ".png")),
+         plot = last_plot(), scale = 1.3, dpi = 350,
+         width = 10, height = 7, units = "in")
