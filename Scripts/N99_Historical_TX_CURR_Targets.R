@@ -174,7 +174,7 @@ library(extrafont)
     filter(period_type %in% c("cumulative", "targets"),
            !period %in% c("FY15", "FY16", "FY21")) %>%
     pivot_wider(names_from = period_type, values_from = val) %>%
-    mutate(achieve = round(cumulative / targets * 100, 2))
+    mutate(achieve = cumulative / targets * 100)
 
   df_msd_cntry_tx %>% glimpse()
 
@@ -227,6 +227,14 @@ library(extrafont)
 
   df_cntry_tx <- df_cntry_tx %>%
     bind_rows(df_msd_cntry_tx)
+
+  # Export targets tbl
+  write_csv(x = df_cntry_tx,
+            file = file.path(dataout,
+                             paste0(country,
+                                    " - Historical Treatment Data - Entire History",
+                                    "_", format(Sys.Date(), "%Y%m%d"),
+                                    ".csv")), na = "")
 
 # VIZ ----
 
@@ -284,7 +292,7 @@ library(extrafont)
     geom_point(aes(y = cumulative), fill = "white", color = usaid_lightblue,
                shape = 21, size = 2) +
     geom_text(aes(y = cumulative, label = paste0(round(achieve), "%")),
-              color = usaid_darkgrey, nudge_x = .5, size = 3) +
+              color = usaid_darkgrey, nudge_x = .5, size = 3.5) +
     scale_fill_si(palette = "genoas") +
     scale_size_area() +
     scale_y_continuous(labels = comma, breaks = seq(0, 1300000, 200000)) +
