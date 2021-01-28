@@ -1,9 +1,8 @@
-##  PROJECT: Performance Summary Tables
-##  AUTHOR:  jdavis | USAID
+##  PROJECT: SI Support for Nigeria
+##  AUTHOR:  B.Kagniniwa | USAID
 ##  PURPOSE: GEND_GBV Sexual Violence Cases
 ##  LICENCE: MIT
 ##  DATE:    2021-01-27
-
 
 # PACKAGES -------------------------------------------------
 
