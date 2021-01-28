@@ -1,9 +1,9 @@
 ##  PROJECT: Performance Summary Tables
-##  AUTHOR:  jdavis | USAID
-##  PURPOSE: Pull Summary clinical cascade data
+##  AUTHOR:  J.Davis, B.Kagniniwa | USAID
+##  PURPOSE: Performance Summary Tables
 ##  LICENCE: MIT
 ##  DATE:    2020-6-16
-##  UPDATED:  2021-01-19
+##  UPDATED: 2021-01-19
 
 
 # PACKAGES -------------------------------------------------

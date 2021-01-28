@@ -1,6 +1,6 @@
 ##  PROJECT: SI Support for Nigeria
 ##  AUTHOR:  B.Kagniniwa | USAID
-##  PURPOSE: HTS_TST
+##  PURPOSE: TX_CURR
 ##  LICENCE: MIT
 ##  DATE:    2021-01-28
 

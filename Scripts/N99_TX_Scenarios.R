@@ -1,5 +1,5 @@
 ##  PROJECT: TX_CURR Historical Datasets
-##  AUTHOR:  jdavis | USAID
+##  AUTHOR:  B.Kagniniwa | USAID
 ##  PURPOSE: TX_CURR PSNU x IM
 ##  LICENCE: MIT
 ##  DATE:    2021-01-25
