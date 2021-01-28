@@ -68,15 +68,15 @@ df_msd <- file_msd %>%
 
 
 df_msd %>%
-  filter(str_detect(indicator, "^HTS_")) %>%
+  filter(str_detect(indicator, "^TX_")) %>%
   distinct(indicator)
 
 df_msd %>%
-  filter(indicator == "HTS_TST") %>%
+  filter(indicator == "TX_CURR") %>%
   distinct(indicator, standardizeddisaggregate)
 
 df_msd %>%
-  filter(indicator == "HTS_TST",
+  filter(indicator == "TX_CURR",
          standardizeddisaggregate == "Total Numerator",
          period_type %in% c("cumulative", "targets")) %>%
   distinct(period, period_type, indicator) %>%
@@ -84,9 +84,9 @@ df_msd %>%
 
 
 # HTS_TST
-df_hts_tst <- df_msd %>%
+df_tx_curr <- df_msd %>%
   clean_agency() %>%
-  filter(indicator == "HTS_TST",
+  filter(indicator == "TX_CURR",
          standardizeddisaggregate == "Total Numerator",
          period_type %in% c("cumulative", "targets"),
          fundingagency != "DEDUP") %>%
@@ -102,55 +102,56 @@ df_hts_tst <- df_msd %>%
                                  paste0(period, " (NA)"),
                                  paste0(period, " (", round(achieve), "%)")))
 
-df_hts_tst %>% glimpse()
+df_tx_curr %>% glimpse()
 
 
 # VIZ ----
 
-## HTS_TST - USAID
-df_hts_tst %>%
-  filter(fundingagency == "USAID") %>%
+## TX_CURR - USAID
+df_tx_curr %>%
+  filter(fundingagency == "USAID", period != "FY21") %>%
   ggplot(aes(reorder(label_results, targets), targets,
              fill = targets,
              label = ifelse(is.na(achieve), "", paste0(round(achieve), "%")))) +
   geom_col(show.legend = F) +
   geom_text(size = 3, color = usaid_darkgrey, hjust = 0) +
-  scale_fill_si(discrete = F, reverse = T) +
+  scale_fill_si(palette = "old_roses", discrete = F, reverse = T) +
   scale_y_continuous(position = "right", labels = comma) +
   coord_flip() +
   labs(x = "", y = "",
-       title = "USAID | HTS_TST Achievements (FY18 - FY20)",
-       subtitle = "FY19 & 20 have lower targets but achievements have been consistent",
+       title = "USAID | TX_CURR Achievements (FY18 - FY20)",
+       subtitle = "FY20 have been a good year for TX_CURR achievements",
        caption = paste0("Bars are sorted by targets, results appended to Fiscal Years\nData source: MSD FY20Q4c, OHA/SIEI - Produced on ", format(Sys.Date(), "%Y-%m-%d"))) +
   si_style_xgrid()
 
-ggsave(file.path(graphics, paste0("Nigeria - USAID - HTS_TST Historical Achievements - ", format(Sys.Date(), "%Y-%m-%d"), ".png")),
+ggsave(file.path(graphics, paste0("Nigeria - USAID - TX_CURR Historical Achievements - ", format(Sys.Date(), "%Y-%m-%d"), ".png")),
        plot = last_plot(), scale = 1.2, dpi = 310,
        width = 10, height = 7, units = "in")
 
-## HTS_TST - USAID
-df_hts_tst %>%
-  filter(fundingagency == "CDC") %>%
+## TX_CURR - CDC
+df_tx_curr %>%
+  filter(fundingagency == "CDC", period != "FY21") %>%
   ggplot(aes(reorder(label_results, targets), targets,
              fill = targets,
              label = ifelse(is.na(achieve), "", paste0(round(achieve), "%")))) +
   geom_col(show.legend = F) +
   geom_text(size = 3, color = usaid_darkgrey, hjust = 0) +
-  scale_fill_si(discrete = F, reverse = T) +
+  scale_fill_si(palette = "old_roses", discrete = F, reverse = T) +
   scale_y_continuous(position = "right", labels = comma) +
   coord_flip() +
   labs(x = "", y = "",
-       title = "CDC | HTS_TST Achievements (FY18 - FY20)",
-       subtitle = "FY18 & 20 have been the best years in terms of achievements",
+       title = "CDC | TX_CURR Achievements (FY18 - FY20)",
+       subtitle = "In FY20, TX_CURR achievements has gotten closer to the 90%",
        caption = paste0("Bars are sorted by targets, results appended to Fiscal Years\nData source: MSD FY20Q4c, OHA/SIEI - Produced on ", format(Sys.Date(), "%Y-%m-%d"))) +
   si_style_xgrid()
 
-ggsave(file.path(graphics, paste0("Nigeria - CDC - HTS_TST Historical Achievements - ", format(Sys.Date(), "%Y-%m-%d"), ".png")),
+ggsave(file.path(graphics, paste0("Nigeria - CDC - TX_CURR Historical Achievements - ", format(Sys.Date(), "%Y-%m-%d"), ".png")),
        plot = last_plot(), scale = 1.2, dpi = 310,
        width = 10, height = 7, units = "in")
 
 ## HTS_TST - ALL
-df_hts_tst %>%
+df_tx_curr %>%
+  filter(period != "FY21") %>%
   group_by(period) %>%
   summarise_at(vars(cumulative, targets), sum, na.rm = TRUE) %>%
   ungroup() %>%
@@ -169,16 +170,16 @@ df_hts_tst %>%
            label = ifelse(achieve == 0, "", paste0(round(achieve), "%")))) +
   geom_col(show.legend = F) +
   geom_text(size = 3, color = usaid_darkgrey, hjust = 0) +
-  scale_fill_si(discrete = F, reverse = T) +
+  scale_fill_si(palette = "old_roses", discrete = F, reverse = T) +
   scale_y_continuous(position = "right", labels = comma) +
   coord_flip() +
   labs(x = "", y = "",
-       title = "USAID | HTS_TST Achievements (FY18 - FY20)",
-       subtitle = "As an OU, FY18 & 20 have been the best years in terms of achievements",
+       title = "USAID | TX_CURR Achievements (FY18 - FY20)",
+       subtitle = "As an OU, FY20 has been the best years in terms of achievements",
        caption = paste0("Bars are sorted by targets, results appended to Fiscal Years\nData source: MSD FY20Q4c, OHA/SIEI - Produced on ", format(Sys.Date(), "%Y-%m-%d"))) +
   si_style_xgrid()
 
-ggsave(file.path(graphics, paste0("Nigeria - ALL - HTS_TST Historical Achievements - ", format(Sys.Date(), "%Y-%m-%d"), ".png")),
+ggsave(file.path(graphics, paste0("Nigeria - ALL - TX_CURR Historical Achievements - ", format(Sys.Date(), "%Y-%m-%d"), ".png")),
        plot = last_plot(), scale = 1.2, dpi = 310,
        width = 10, height = 7, units = "in")
 
