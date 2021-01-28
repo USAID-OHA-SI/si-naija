@@ -76,7 +76,7 @@ library(extrafont)
 
   # Comm level
     comm_lvl <- df_lvls %>%
-      filter(operatingunit == cntry) %>%
+      filter(operatingunit == cntry) %>% View()
       pull(community)
 
   # Orgs
