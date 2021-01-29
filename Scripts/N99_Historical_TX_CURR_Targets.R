@@ -9,6 +9,7 @@
 
 library(tidyverse)
 library(readxl)
+library(vroom)
 library(glitr)
 library(scales)
 library(glamr)
@@ -104,40 +105,125 @@ library(extrafont)
     distinct(period) %>%
     prinf()
 
+  df_msd %>%
+    clean_agency() %>% #View()
+    filter(indicator %in% c("TX_CURR", "TX_NEW")) %>%
+    distinct(standardizeddisaggregate, period) %>% prinf()
+
+  # Verify counts: thx TE
+
+  df_check <- df_msd %>%
+    clean_agency() %>%
+    filter(indicator %in% c("TX_CURR", "TX_NEW"),
+           standardizeddisaggregate == "Total Numerator",
+           str_to_lower(fundingagency) != "dedup")
+
+  df_check %>% count(period_type)
+
+  # Verify SNU1
+  df_check %>%
+    filter(period_type == "results") %>%
+    group_by(fundingagency, period, indicator, snu1) %>%
+    summarise(snu1_totals_period = sum(val, na.rm = TRUE)) %>%
+    spread(period, snu1_totals_period) %>%
+    View()
+
+  # Verify Agency
+  df_check %>%
+    filter(period_type == "results") %>%
+    group_by(fundingagency, period, indicator) %>%
+    summarise(agency_totals_period = sum(val, na.rm = TRUE)) %>%
+    spread(period, agency_totals_period) %>%
+    View(title = "agency")
+
+
   # TX Data
   df_msd_tx <- df_msd %>%
     clean_agency() %>%
     filter(indicator %in% c("TX_CURR", "TX_NEW"),
            standardizeddisaggregate == "Total Numerator",
-           fundingagency != "Dedup") %>%
+           str_to_lower(fundingagency) != "dedup") %>%
     group_by(fundingagency, snu1, indicator, period, period_type) %>%
     summarise_if(is.numeric, ~sum(., na.rm = TRUE)) %>%
     ungroup()
 
-  df_msd_tx %>% glimpse()
 
-  df_msd_tx %>% distinct(period) %>% pull() %>% sort()
+  df_msd_tx %>%
+    distinct(period) %>%
+    pull() %>%
+    sort()
+
 
   df_msd_tx_results <- df_msd_tx %>%
     filter(period_type == "results") %>%
-    select(-period_type) %>%
+    dplyr::select(-period_type) %>%
     mutate(period = str_replace(period, "FY", "FY20")) %>%
     arrange(period) %>%
     pivot_wider(names_from = period, values_from = val) %>%
     relocate(indicator, .after = fundingagency) %>%
     arrange(fundingagency, indicator, snu1)
 
-  df_msd_tx_results %>% glimpse()
-
-  df_msd_tx_results %>% View()
 
   # Export results tbl
-  write_csv(x = df_msd_tx_results,
-            file = file.path(dataout,
-                             paste0(country,
-                                    " - Historical Treatment Results",
-                                    "_", format(Sys.Date(), "%Y%m%d"),
-                                    ".csv")), na = "")
+  # write_csv(x = df_msd_tx_results,
+  #           file = file.path(dataout,
+  #                            paste0(country,
+  #                                   " - Historical Treatment Results",
+  #                                   "_", format(Sys.Date(), "%Y%m%d"),
+  #                                   ".csv")), na = "")
+
+  # Double check numbers
+  df <- df_msd_tx_results %>%
+    pivot_longer(cols = starts_with("FY"),
+                 names_to = "period",
+                 values_to = "val") %>%
+    separate(period, c("fiscal_year", "rep_qtr"), sep = "Q") %>%
+    mutate(rep_qtr = paste0("Q", rep_qtr)) %>%
+    group_by(fundingagency, indicator, snu1, fiscal_year) %>%
+    summarise(val = sum(val, na.rm = TRUE)) %>%
+    ungroup()
+
+  df %>% View()
+
+  df %>%
+    filter(fiscal_year == "FY2015",
+           fundingagency == "USAID",
+           indicator == "TX_CURR") %>%
+    group_by(fundingagency, indicator) %>%
+    summarise(val = sum(val, na.rm = T)) %>% View()
+
+  df %>%
+    filter(fiscal_year == "FY2015",
+           fundingagency == "USAID",
+           indicator == "TX_CURR",
+           snu1 %in% c("Abia", "Taraba")) %>%
+    group_by(fundingagency, indicator) %>%
+    summarise(val = sum(val, na.rm = T)) %>% View()
+
+
+  df %>%
+    filter(fiscal_year == "FY2019",
+           fundingagency == "USAID",
+           indicator == "TX_CURR",
+           snu1 %in% c("Rivers")) %>%  View()
+    group_by(fundingagency, indicator) %>%
+    summarise(val = sum(val, na.rm = T)) %>% View()
+
+    df %>%
+      filter(fiscal_year == "FY2019",
+             fundingagency == "USAID",
+             indicator == "TX_CURR",
+             snu1 %in% c("Anambra")) %>%  View()
+    group_by(fundingagency, indicator) %>%
+      summarise(val = sum(val, na.rm = T)) %>% View()
+
+
+
+  df %>%
+    filter(fiscal_year == "FY2015",
+           indicator == "TX_NEW",
+           snu1 %in% c("Abia", "Taraba")) %>% View()
+
 
   # Targets
   df_msd_tx_targets <- df_msd_tx %>%
@@ -150,24 +236,21 @@ library(extrafont)
     relocate(indicator, .after = fundingagency) %>%
     arrange(fundingagency, indicator, snu1)
 
-  df_msd_tx_targets %>% glimpse()
-
-  df_msd_tx_targets %>% View()
 
   # Export targets tbl
-  write_csv(x = df_msd_tx_results,
-            file = file.path(dataout,
-                             paste0(country,
-                                    " - Historical Treatment Targets",
-                                    "_", format(Sys.Date(), "%Y%m%d"),
-                                    ".csv")), na = "")
+  # write_csv(x = df_msd_tx_results,
+  #           file = file.path(dataout,
+  #                            paste0(country,
+  #                                   " - Historical Treatment Targets",
+  #                                   "_", format(Sys.Date(), "%Y%m%d"),
+  #                                   ".csv")), na = "")
 
   # OU TX Data
   df_msd_cntry_tx <- df_msd %>%
     clean_agency() %>%
     filter(indicator %in% c("TX_CURR", "TX_NEW"),
            standardizeddisaggregate == "Total Numerator",
-           fundingagency != "Dedup") %>%
+           str_to_lower(fundingagency) != "dedup") %>%
     group_by(indicator, period, period_type) %>%
     summarise_if(is.numeric, ~sum(., na.rm = TRUE)) %>%
     ungroup() %>%
@@ -176,14 +259,11 @@ library(extrafont)
     pivot_wider(names_from = period_type, values_from = val) %>%
     mutate(achieve = cumulative / targets * 100)
 
-  df_msd_cntry_tx %>% glimpse()
-
 
   # Pre-datim data
-  df <- file_pre_datim %>% vroom() %>%
+  df <- file_pre_datim %>%
+    vroom() %>%
     clean_names()
-
-  df %>% glimpse()
 
   df_tx_nga <- df %>%
     filter(country_region == "Nigeria",
@@ -196,21 +276,18 @@ library(extrafont)
     pivot_wider(names_from = "measure_name", values_from = "measure_value") %>%
     mutate(Achieve = Results / Targets * 100)
 
-  df_tx_nga %>% glimpse()
-  df_tx_nga %>% View()
-
 
   # Export targets tbl
-  write_csv(x = df_tx_nga,
-            file = file.path(dataout,
-                             paste0(country,
-                                    " - Historical Treatment Data - Pre Datim",
-                                    "_", format(Sys.Date(), "%Y%m%d"),
-                                    ".csv")), na = "")
+  # write_csv(x = df_tx_nga,
+  #           file = file.path(dataout,
+  #                            paste0(country,
+  #                                   " - Historical Treatment Data - Pre Datim",
+  #                                   "_", format(Sys.Date(), "%Y%m%d"),
+  #                                   ".csv")), na = "")
 
   # Align with MSD
   df_cntry_tx <- df_tx_nga %>%
-    select(indicator = indicator_short_name,
+    dplyr::select(indicator = indicator_short_name,
            period = year,
            cumulative = Results,
            targets = Targets,
@@ -223,18 +300,70 @@ library(extrafont)
       ),
       period = paste0("FY", str_sub(period, 3, 4)))
 
-  df_cntry_tx %>% glimpse()
-
+  # Merge data
   df_cntry_tx <- df_cntry_tx %>%
     bind_rows(df_msd_cntry_tx)
 
   # Export targets tbl
-  write_csv(x = df_cntry_tx,
-            file = file.path(dataout,
-                             paste0(country,
-                                    " - Historical Treatment Data - Entire History",
-                                    "_", format(Sys.Date(), "%Y%m%d"),
-                                    ".csv")), na = "")
+  # write_csv(x = df_cntry_tx,
+  #           file = file.path(dataout,
+  #                            paste0(country,
+  #                                   " - Historical Treatment Data - Entire History",
+  #                                   "_", format(Sys.Date(), "%Y%m%d"),
+  #                                   ".csv")), na = "")
+
+
+
+
+# Data Call
+# last 3 fy
+
+  df_tx_hts <- df_msd_curr %>%
+    clean_agency() %>%
+    filter(indicator %in% c("HTS_TST", "TX_CURR"),
+           standardizeddisaggregate == "Total Numerator",
+           str_to_lower(fundingagency) != "dedup",
+           period_type %in% c("cumulative", "targets")) %>%
+    group_by(fundingagency, indicator, period, period_type) %>%
+    summarise_if(is.numeric, ~sum(., na.rm = TRUE)) %>%
+    ungroup() %>%
+    mutate(indicator = paste0(indicator, "_", period_type)) %>%
+    dplyr::select(-period_type) %>%
+    pivot_wider(names_from = indicator, values_from = val) %>%
+    mutate(TX_CURR_achieve = TX_CURR_cumulative / TX_CURR_targets * 100,
+           HTS_TST_achieve = HTS_TST_cumulative / HTS_TST_targets * 100) %>%
+    relocate(HTS_TST_achieve, .after = HTS_TST_targets) %>%
+    rename(fiscal_year = period)
+
+  # Export tx & hts tbl
+  # write_csv(x = df_tx_hts,
+  #           file = file.path(dataout,
+  #                            paste0(country,
+  #                                   " - OU Treatment and Testing Data - FY18toFY21",
+  #                                   "_", format(Sys.Date(), "%Y%m%d"),
+  #                                   ".csv")), na = "")
+
+
+  # Data Call
+  # Full history of all indicators
+
+  df_hist <- df_msd %>%
+    clean_agency() %>%
+    filter(standardizeddisaggregate == "Total Numerator",
+           str_to_lower(fundingagency) != "dedup",
+           ) %>%
+    group_by(fundingagency, snu1, indicator, period, period_type) %>%
+    summarise_if(is.numeric, ~sum(., na.rm = TRUE)) %>%
+    ungroup() %>%
+    rename(value = val)
+
+  # Export history tbl
+  # write_csv(x = df_hist,
+  #           file = file.path(dataout,
+  #                            paste0(country,
+  #                                   " - All Indicators History Data - FY15toFY21",
+  #                                   "_", format(Sys.Date(), "%Y%m%d"),
+  #                                   ".csv")), na = "")
 
 # VIZ ----
 
