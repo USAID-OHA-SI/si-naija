@@ -63,11 +63,12 @@ file_shp <- list.files(
 #' @param agency Funding Agency
 #' @param ind    Indicator
 #'
-plot_pmtct_ach <- function(agency, ind) {
+plot_pmtct_ach <- function(agency, ind, pd = "FY20Q4") {
 
   # params
   agency <- {{agency}}
   ind <- {{ind}}
+  pd <- {{pd}}
 
   print(paste0(agency, " - ", ind))
 
@@ -75,8 +76,8 @@ plot_pmtct_ach <- function(agency, ind) {
   df <- df_pmtct %>%
     filter(fundingagency == agency,
            indicator == ind,
-           period != "FY21",
-           !is.na(cumulative))
+           period == pd,
+           !is.na(results))
 
   print(nrow(df))
 
@@ -108,22 +109,29 @@ plot_pmtct_ach <- function(agency, ind) {
 
   ggsave(file.path(graphics, paste0("Nigeria - ",
                                     agency, " - ", ind,
-                                    " Historical Achievements - ",
+                                    " - ", pd,
+                                    " - Historical Achievements - ",
                                     format(Sys.Date(), "%Y-%m-%d"), ".png")),
          plot = last_plot(), scale = 1.2, dpi = 310,
          width = 10, height = 7, units = "in")
 }
 
+df_pmtct %>%
+  filter(fundingagency == "USAID",
+         indicator == "PMTCT_EID",
+         period == "FY20Q4",
+         !is.na(results))
 
 #' @title Plot PMTCT Achievements
 #' @param agency Funding Agency
 #' @param ind    Indicator
 #'
-plot_pmtct_rst <- function(agency, ind) {
+plot_pmtct_rst <- function(agency, ind, pd = "FY20Q4") {
 
   # params
   agency <- {{agency}}
   ind <- {{ind}}
+  pd <- {{pd}}
 
   print(paste0(agency, " - ", ind))
 
@@ -131,7 +139,7 @@ plot_pmtct_rst <- function(agency, ind) {
   df <- df_pmtct %>%
     filter(fundingagency == agency,
            indicator == ind,
-           period != "FY21",
+           period == pd,
            !is.na(cumulative)) %>%
     mutate(snu1 = str_remove(snu1, " Nigeria"))
 
@@ -164,6 +172,7 @@ plot_pmtct_rst <- function(agency, ind) {
 
   ggsave(file.path(graphics, paste0("Nigeria - ",
                                     agency, " - ", ind,
+                                    " - ", pd,
                                     " Historical Results - ",
                                     format(Sys.Date(), "%Y-%m-%d"), ".png")),
          plot = last_plot(), scale = 1.2, dpi = 310,
@@ -202,6 +211,11 @@ df_msd %>%
   arrange(indicator, standardizeddisaggregate)
 
 df_msd %>%
+  filter(fundingagency == "USAID", indicator %in% inds) %>%
+  distinct(indicator, standardizeddisaggregate, period) %>%
+  arrange(indicator, standardizeddisaggregate) %>% prinf()
+
+df_msd %>%
   filter(indicator %in% inds,
          standardizeddisaggregate == "Total Numerator",
          period_type %in% c("cumulative", "targets")) %>%
@@ -230,10 +244,36 @@ df_pmtct <- df_msd %>%
 
 df_pmtct %>% glimpse()
 
+df_pmtct %>% View()
+
+# export for SI
+df_pmtct_export <- df_msd %>%
+  clean_agency() %>%
+  filter(indicator %in% inds,
+         standardizeddisaggregate == "Total Numerator",
+         #period_type %in% c("cumulative", "targets"),
+         fundingagency != "DEDUP") %>%
+  group_by(fundingagency, snu1, indicator, period, period_type) %>%
+  summarise_at(vars(val), sum, na.rm = T) %>%
+  ungroup() %>%
+  mutate(rep_period = paste0(period, "_", period_type)) %>%
+  pivot_wider(id_cols = fundingagency:indicator,
+              names_from = rep_period, values_from = val) %>%
+  relocate(FY19_cumulative, .before = FY19_targets) %>%
+  relocate(FY19Q3_results, .before = FY19Q4_results)
+
+write_csv(x = df_pmtct_export,
+          file = file.path(dataout,
+                           paste0(country,
+                                  " - FY18to20 PMTCT data tbl - ",
+                                  format(Sys.Date(), "%Y%m%d"),
+                                  ".csv")), na = "")
+
 
 df_pmtct %>%
   filter(fundingagency == "CDC",
          period != "FY21",
+         #period != "Q4FY20",
          is.na(targets)) %>%
   distinct(indicator)
 
@@ -264,7 +304,7 @@ df_cntry_pmtct %>% glimpse()
 # By Agency
 
 agency <- "USAID"
-#agency <- "CDC"
+agency <- "CDC"
 
 # % Ach
 df_pmtct %>%
@@ -287,12 +327,12 @@ df_pmtct %>%
 
 ## CNTRY
 df_pmtct %>%
-  filter(indicator == "PMTCT_FO",
-         period != "FY21") %>% #view()
-  ggplot(aes(reorder_within(snu1, cumulative, period),
+  filter(indicator == "PMTCT_EID",
+         period %in% c("FY20", "FY20Q4")) %>% #view()
+  ggplot(aes(reorder_within(snu1, results, period),
              cumulative,
-             fill = cumulative,
-             label = cumulative)) +
+             fill = results,
+             label = results)) +
   geom_col(show.legend = F) +
   geom_text(size = 3, color = usaid_darkgrey, hjust = 0) +
   scale_fill_si(palette = "scooters", discrete = F, reverse = T) +
