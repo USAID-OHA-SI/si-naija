@@ -15,6 +15,7 @@ library(glamr)
 library(gisr)
 library(janitor)
 library(extrafont)
+library(ICPIutilities)
 
 # GLOBAL --------------------------------------------------
 
@@ -119,7 +120,7 @@ library(extrafont)
 
   df_targets %>% glimpse()
 
-  df_targets %>% head()
+  #df_targets %>% head()
 
   df_trgts <- df_targets %>%
     separate(site, into = c("psnu", "facility"), sep = " > ", remove = FALSE) %>%
@@ -145,7 +146,7 @@ library(extrafont)
 
   df_trgts %>% glimpse()
 
-  View(df_trgts)
+  #View(df_trgts)
 
 
   # PSNU targets
@@ -216,7 +217,7 @@ library(extrafont)
            period == "FY20",
            period_type %in% c("targets", "cumulative"),
            standardizeddisaggregate == "Total Numerator",
-           fundingagency != "Dedup") %>%
+           str_to_lower(fundingagency) != "dedup") %>%
     distinct(fundingagency, facilityuid)
 
   df_tx_curr_sites <- df_trgts %>%
@@ -245,6 +246,14 @@ library(extrafont)
     left_join(df_agency_sites, by = c("orgunituid" = "facilityuid"))
 
   df_tx_curr_sites %>% glimpse()
+
+  # Export tx sites
+  write_csv(x = df_tx_curr_sites,
+            file = file.path(dataout,
+                             paste0(country,
+                                    "_TX_CURR_Sites_by_Agency_",
+                                    format(Sys.Date(), "%Y%m%d"),
+                                    ".csv")), na = "")
 
   df_tx_curr_sites %>%
     filter(val > 0, is.na(longitude)) %>%

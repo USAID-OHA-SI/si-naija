@@ -16,6 +16,7 @@ library(glamr)
 library(gisr)
 library(janitor)
 library(extrafont)
+library(ICPIutilities)
 
 # GLOBAL --------------------------------------------------
 
