@@ -280,7 +280,6 @@ trend_art_saturation <- function(df) {
       st_drop_geometry() %>%
       distinct(label)
 
-
     spdf_pepfar %>%
       filter(name == "Akwa Ibom",
              label == 'prioritization') %>%
