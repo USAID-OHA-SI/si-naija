@@ -39,15 +39,15 @@ source("../lastmile/Scripts/00_Geo_Utilities.R")
 
   # MER Data - get the latest MSD PSNU x IM file
   file_site_im <- dir_merdata %>%
-    return_latest(pattern = "^MER_.*_Site_IM_.*_20210212_v1_1_N.*.zip$")
+    return_latest(pattern = "^MER_.*_Site_IM_.*_\\d{8}_v2_1_N.*.zip$")
 
   # MER Data - get the latest MSD PSNU x IM file
   file_psnu_im <- dir_merdata %>%
-    return_latest(pattern = "^MER_.*_PSNU_IM_.*_20210212_v1_1_N.*.zip$")
+    return_latest(pattern = "^MER_.*_PSNU_IM_.*_\\d{8}_v2_1_N.*.zip$")
 
   # NAT Data - get the latest NAT_SUBNAT file
   file_natsub <- dir_merdata %>%
-    return_latest(pattern = "^MER_.*_NAT_SUBNAT_.*_20210212_v1_1.zip$")
+    return_latest(pattern = "^MER_.*_NAT_SUBNAT_.*_\\d{8}_v2_1.zip$")
 
   # Shapefile path
   file_shp <- dir_geodata %>%
@@ -261,7 +261,7 @@ trend_art_saturation <- function(df) {
   # Data
     df_sites <- file_site_im %>% read_msd()
 
-    #df_psnu <- file_psnu_im %>% read_msd()
+    df_psnu <- file_psnu_im %>% read_msd()
 
     df_nat <- file_natsub %>% read_msd()
 
@@ -301,6 +301,12 @@ trend_art_saturation <- function(df) {
     filter(indicator %in% c("PLHIV")) %>%
     distinct(fiscal_year, standardizeddisaggregate, statushiv) %>%
     arrange(fiscal_year, standardizeddisaggregate)
+
+  df_nat %>%
+    filter(str_detect(indicator, "PLHIV|TX_CURR")) %>%
+    distinct(fiscal_year, indicator, standardizeddisaggregate, statushiv) %>%
+    arrange(fiscal_year, indicator, standardizeddisaggregate) %>%
+    prinf()
 
   df_plhiv <- df_nat %>%
     reshape_msd(clean = TRUE) %>%
