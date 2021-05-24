@@ -41,11 +41,10 @@
 # LOAD DATA ----
 
   ## FY21 Targets
-  #df_psnu <- file_psnu_im %>% read_msd()
-  df_psnu <- file_genie %>% read_msd()
+  df_psnu <- file_psnu_im %>% read_msd()
+  #df_psnu <- file_genie %>% read_msd()
 
-  df_psnu <- df_psnu %>%
-    clean_agency()
+  df_psnu <- df_psnu %>% clean_agency()
 
   df_psnu %>% glimpse()
 
@@ -57,6 +56,7 @@
 
   df_psnu %>%
     filter(fiscal_year == 2021,
+           str_detect(str_to_lower(fundingagency), "dedup", negate = TRUE),
            str_detect(indicator, "^HTS_.*"),
            str_detect(str_to_lower(standardizeddisaggregate), "keypop")
            ) %>%
@@ -74,18 +74,24 @@
     gt()
 
   df_psnu %>%
+    filter(fiscal_year == 2021,
+           str_detect(indicator, "^HTS_.*"),
+           str_detect(str_to_lower(fundingagency), "dedup", negate = TRUE)
+    ) %>%
     group_by(fiscal_year, fundingagency, snu1uid, snu1, indicator, otherdisaggregate) %>%
     summarise(across(targets:cumulative, sum, na.rm = TRUE)) %>%
     ungroup() %>%
     view()
 
   # Period
-  #pd = "qtr1"
-  pd = "cumulative"
+  pd = "qtr1"
+  #pd = "qtr2"
+  #pd = "cumulative"
 
   # HTS_TST OU Achievement
   df_hts_keypop_ou <- df_psnu %>%
     filter(fiscal_year == 2021,
+           str_detect(str_to_lower(fundingagency), "dedup", negate = TRUE),
            indicator == "HTS_TST_POS",
            standardizeddisaggregate == "KeyPop/Result") %>%
     group_by(fundingagency) %>%
@@ -129,6 +135,7 @@
   # HTS_TST Achievements by states
   df_hts_keypop <- df_psnu %>%
     filter(fiscal_year == 2021,
+           str_detect(str_to_lower(fundingagency), "dedup", negate = TRUE),
            fundingagency != "DOD",
            indicator == "HTS_TST_POS",
            standardizeddisaggregate == "KeyPop/Result") %>%
@@ -145,6 +152,7 @@
   # HTS_TST Achievements by states / groups
   df_hts_keypop_groups <- df_psnu %>%
     filter(fiscal_year == 2021,
+           str_detect(str_to_lower(fundingagency), "dedup", negate = TRUE),
            fundingagency != "DOD",
            indicator == "HTS_TST_POS",
            standardizeddisaggregate == "KeyPop/Result") %>%
@@ -164,8 +172,9 @@
 # VIZ
 
   # title pd variable
-  #t_pd <- "Q1"
-  t_pd <- "Q2"
+  t_pd <- "Q1"
+  #t_pd <- "Q2"
+  #t_pd <- "Cummulative"
 
   # State achieve
   ggplot(data = df_hts_keypop,
