@@ -2,8 +2,8 @@
 ##  AUTHOR:  J.Davis, B.Kagniniwa | USAID
 ##  PURPOSE: Performance Summary Tables
 ##  LICENCE: MIT
-##  DATE:    2020-6-16
-##  UPDATED: 2021-01-19
+##  DATE:    2020-06-16
+##  UPDATED: 2021-06-08
 
 
 # PACKAGES -------------------------------------------------
@@ -16,7 +16,8 @@
 
   # DIRs
 
-  merdata <- glamr::si_path("path_msd")
+  dir_merdata <- glamr::si_path("path_msd")
+
   data <- "./Data"
   dataout <- "./Dataout"
   images <- "./Images"
@@ -30,21 +31,16 @@
 
   agency <- agencies %>% first()
 
-  curr_pd <- 4
+  curr_pd <- 2
 
-  curr_fy <- 2020
+  curr_fy <- 2021
 
   fiscal_years <- c(curr_fy - 1, curr_fy)
 
 
   # Latest MSD File
-  file_msd <- list.files(
-      path = merdata,
-      pattern = "MER_S.*_PSNU_IM_.*_\\d{8}_v.*_N.*.zip",
-      full.names = TRUE
-    ) %>%
-    sort() %>%
-    last()
+  file_msd <- dir_merdata %>%
+    return_latest(pattern = "^MER_.*_PSNU_IM_.*_\\d{8}_v\\d{1}_1_N.*.zip$")
 
 # Indicators ----------------------------------------------------
 
@@ -95,6 +91,7 @@
 
   # TODO:
   qtrs <- 1:4
+
   refs <- c("cumulative", "_targets")
 
   pds <- qtrs %>%
@@ -111,8 +108,6 @@
 
   # MSD
   df <- file_msd %>% read_msd()
-
-  #df %>% glimpse()
 
   #step 1: everything other than vl/retention
 
@@ -157,14 +152,14 @@
     summarise_at(vars(starts_with("qtr")), sum, na.rm = TRUE) %>%
     ungroup() %>%
     reshape_msd(direction = "long") %>%
-    spread(indicator, val) %>%
+    spread(indicator, value) %>%
     group_by(fundingagency, primepartner, snu1, psnu, psnuuid,
              standardizeddisaggregate, sex, trendsfine) %>%
     mutate(TX_CURR_lag2 = lag(TX_CURR, 2),
            TX_CURR_lag1 = lag(TX_CURR, 1)) %>%
     dplyr::select(-TX_CURR) %>%
     ungroup() %>%
-    gather(indicator, value = val, TX_PVLS_D:TX_CURR_lag1, na.rm = TRUE)
+    gather(indicator, value, TX_PVLS_D:TX_CURR_lag1, na.rm = TRUE)
 
 
   #df_vl %>% glimpse()
@@ -172,7 +167,7 @@
   ##  step 3: append
 
   df_cntry <- bind_rows(df1, df_vl) %>%
-    mutate(val = as.integer(val))
+    mutate(value = as.integer(value))
 
   df_cntry %>%
     distinct(indicator) %>%
@@ -193,7 +188,7 @@
     ) %>%
     group_by(fundingagency, indicator, period) %>%
     summarise_if(is.numeric, ~ sum(., na.rm = TRUE)) %>%
-    spread(indicator, val) %>%
+    spread(indicator, value) %>%
     mutate(suppression = round(TX_PVLS_D / TX_CURR_lag2 * 100, 2),
            coverage = round(TX_PVLS_N / TX_PVLS_D * 100, 2),
            retention = round(TX_CURR / (TX_CURR_lag1 + TX_NEW) * 100, 2),
@@ -201,12 +196,12 @@
            positivity = round(HTS_TST_POS / HTS_TST * 100, 2)) %>%
     ungroup %>%
     dplyr::select(-TX_CURR_lag1, -TX_CURR_lag2, -TX_PVLS_N) %>%
-    gather(indicator, val, HTS_TST:positivity) %>%
+    gather(indicator, value, HTS_TST:positivity) %>%
     mutate(indicator = factor(indicator, ind_list2),
            period = factor(period, pd_list),
            fundingagency = str_remove(fundingagency, "HHS/"),
            fundingagency = factor(fundingagency, levels = c("USAID", "CDC"))) %>%
-    spread(period, val)
+    spread(period, value)
 
   #df_cntry_all %>% glimpse()
 

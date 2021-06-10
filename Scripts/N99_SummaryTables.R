@@ -22,13 +22,26 @@
 
 # GLOBAL ------------------------------------
 
+  # Global data
+  dir_merdata <- glamr::si_path("path_msd")
+  dir_raster <- glamr::si_path("path_raster")
+  dir_vector <- glamr::si_path("path_vector")
+
+  # Local data & outputs
+  data <- "./Data"
+  dataout <- "./Dataout"
+  images <- "./Images"
+  graphics <- "./Graphics"
+
+  # Country name
+  country <- "Nigeria"
+
   agency <- "USAID"
 
   RColorBrewer::display.brewer.all()
 
   pal <- brewer.pal(5, "Spectral")[2:5]
 
-  source("./Scripts/N00_Config.R")
 
 # FUNCTIONS ---------------------------------
 
@@ -91,6 +104,7 @@
 
 
   #' Create Summary Table
+  #'
   #' @param df
   #' @param
   #' @return gt table as a view
