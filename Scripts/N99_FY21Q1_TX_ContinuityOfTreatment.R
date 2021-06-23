@@ -1,6 +1,6 @@
 ##  PROJECT: SI Support for Nigeria
 ##  AUTHOR:  Baboyma Kagniniwa | USAID
-##  PURPOSE: TX_CURR Results Trend by Gender
+##  PURPOSE: TX_CURR / NEW Targets by IP and IM
 ##  LICENCE: MIT
 ##  DATE:    2021-04-07
 
@@ -59,14 +59,6 @@
 
   # Available fields
   df_site %>% glimpse()
-
-  df_site %>% distinct() %>% pull()
-
-  df_site %>% distinct(indicator) %>% pull()
-
-  df_site %>% distinct(sitetype) %>% pull()
-
-  df_site %>% distinct(standardizeddisaggregate) %>% pull()
 
   # Indicators connected at site levels
   df_site %>%
@@ -146,7 +138,7 @@
     coord_flip() +
     facet_wrap(~indicator, scales = "free") +
     labs(x = "", y = "",
-         title = "NIGERIA - FYI21 TREATMENT TARGETS BY PARTNER",
+         title = "NIGERIA - FY21 TREATMENT TARGETS BY PARTNER",
          subtitle = "NOTE: These targets do not include the latest COP20 OPU",
          caption = paste0("Source: DATIM MSD FY21Q1c - Produced on ",
                           format(Sys.Date(), "%Y-%m-%d"))) +

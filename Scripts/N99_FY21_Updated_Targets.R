@@ -3,6 +3,7 @@
 ##  PURPOSE: Update TX Targets
 ##  LICENCE: MIT
 ##  DATE:    2021-02-05
+##  UPDATED: 2021-06-21
 
 
 # PACKAGES -------------------------------------------------
@@ -28,27 +29,27 @@ library(ICPIutilities)
 
   # file - COP19 OPU
   file_fy20_targets <- return_latest(
-      folderpath = data,
+      folderpath = dir_data,
       pattern = "^Site Tool_Nig.*_\\d{14}_F.*.xlsx$")
 
   # file - COP20 OPU
   file_fy21_usaid_targets <- return_latest(
-    folderpath = data,
+    folderpath = dir_data,
     pattern = "FY21 DATIM.*Nov 2020.xlsx$")
 
   file_fy21_cdc_targets <- return_latest(
-    folderpath = data,
+    folderpath = dir_data,
     pattern = "Nigeria COP20.*.CDC.*.xlsx$"
   )
 
   # Latest MSD PSNU x IM File
   file_msd_psnu <- return_latest(
-      folderpath = merdata,
+      folderpath = dir_merdata,
       pattern = "MER_S.*_PSNU_IM_.*_\\d{8}_v.*_N.*.zip")
 
   # Latest MSD Site x IM File
   file_msd_sites <- return_latest(
-    folderpath = merdata,
+    folderpath = dir_merdata,
       pattern = "MER_S.*_Site_IM_.*_\\d{8}_v.*_N.*.zip")
 
 # FUNCTIONS ------------------------------------------------
@@ -153,7 +154,7 @@ library(ICPIutilities)
     group_by(fundingagency, snu1, psnu, indicator, period) %>%
     summarise_if(is.numeric, ~sum(., na.rm = TRUE)) %>%
     ungroup() %>%
-    pivot_wider(names_from = period, values_from = val)
+    pivot_wider(names_from = period, values_from = value)
 
   df_msd_psnu_trgts %>% glimpse()
 
