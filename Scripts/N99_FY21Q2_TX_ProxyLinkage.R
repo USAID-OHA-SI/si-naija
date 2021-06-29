@@ -53,39 +53,23 @@
 # FUNCTIONS
 
   #' @title Linkage Style
+  #'
+  #' @param gt_tbl GT Table
+  #' @param cols   List of column names to format
+  #'
   style_linkage <- function(gt_tbl, cols = NULL) {
 
-    # link_breaks <- c(.85, .95)
-    #
-    # df <- gt_tbl$`_data` %>%
-    #   as_tibble() %>%
-    #   select(-mech_name)
-    #
-    # link_cols <- df %>% names()
-    #
-    # link_cols1 <- df %>%
-    #   select_if(~any(. < .85)) %>%
-    #   names()
-    #
-    # link_cols2 <- df %>%
-    #   select_if(~any(. >= .85 & . < .95)) %>%
-    #   names()
-    #
-    # link_cols3 <- df %>%
-    #   select_if(~any(. >= .95)) %>%
-    #   names()
-    #
-    # print(link_cols)
+    # Check colnames
+    if (is.null(cols)) {
+      cols <- gt_tbl$`_data` %>% names();
+    }
 
-    # if (is.null(cols)) {
-    #   #cols = everything()
-    # }
-
-    # Link < .85
+    # Apply style to every columns/rows
     for (col in cols) {
 
       print(glue("{col}: < .85"))
 
+      # Link < .85
       gt_tbl <- gt_tbl %>%
         tab_style(
           style = cell_fill(color = old_rose_light, alpha = 0.75),
@@ -94,11 +78,8 @@
             rows = !!sym(col) < .85
           )
         )
-    }
 
-    # Link btw .85 & .95
-    for (col in cols) {
-
+      # Link btw .85 & .95
       gt_tbl <- gt_tbl %>%
         tab_style(
           style = cell_fill(color = burnt_sienna_light, alpha = 0.75),
@@ -107,11 +88,8 @@
             rows = !!sym(col) >= .85 & !!sym(col) < .95
           )
         )
-    }
 
-    # Link >= .95
-    for (col in cols) {
-
+      # Link >= .95
       gt_tbl <- gt_tbl %>%
         tab_style(
           style = cell_fill(color = scooter_light, alpha = 0.75),
@@ -122,105 +100,84 @@
         )
     }
 
-    # gt_tbl <- gt_tbl %>%
-    #   tab_style(
-    #     style = list(cell_fill(color = old_rose_light, alpha = 0.75)),
-    #     locations = list(
-    #       cells_body(
-    #         columns = Male,
-    #         rows = Male < .85
-    #       ),
-    #       cells_body(
-    #         columns = Female,
-    #         rows = Female < .85
-    #       )
-    #     )
-    #   ) %>%
-    #   tab_style(
-    #     style = list(cell_fill(color = burnt_sienna_light, alpha = 0.75)),
-    #     locations = list(
-    #       cells_body(
-    #         columns = Male,
-    #         rows = Male >= .85 & Male < .95
-    #       ),
-    #       cells_body(
-    #         columns = Female,
-    #         rows = Female >= .85 & Female < .95
-    #       )
-    #     )
-    #   ) %>%
-    #   tab_style(
-    #     style = list(cell_fill(color = scooter_light, alpha = 0.75)),
-    #     locations = list(
-    #       cells_body(
-    #         columns = Male,
-    #         rows = Male >= .95
-    #       ),
-    #       cells_body(
-    #         columns = Female,
-    #         rows = Female >= .95
-    #       )
-    #     )
-    #   )
 
-    # Structure
-    if (!is.null(cols)) {
-
-      gt_tbl <- gt_tbl %>%
-        fmt_missing(
-          columns = all_of(cols),
-          rows = everything(),
-          missing_text = "--"
-        ) %>%
-        cols_align(align = "center") %>%
-        tab_style(
-          style = list(
-            cell_borders(
-              sides = c("left", "right"),
-              color = grey10k,
-              weight = px(1.5)
-            ),
-            cell_text(
-              align = "center"
-            )
+    # Update tbl structure / style
+    gt_tbl <- gt_tbl %>%
+      fmt_missing(
+        columns = all_of(cols),
+        rows = everything(),
+        missing_text = "--"
+      ) %>%
+      cols_align(align = "center") %>%
+      tab_style(
+        style = list(
+          cell_borders(
+            sides = c("left", "right"),
+            color = grey10k,
+            weight = px(1.5)
           ),
-          locations = cells_body(
-            columns = all_of(cols)
+          cell_text(
+            align = "center"
           )
-        ) %>%
-        tab_options(
-          data_row.padding = px(5)
+        ),
+        locations = cells_body(
+          columns = all_of(cols)
         )
-    }
+      ) %>%
+      tab_options(
+        data_row.padding = px(5)
+      )
 
     return(gt_tbl)
   }
 
 
   #' @title Format Rows
+  #'
+  #' @param gt_tbl GT Table
+  #' @param format Format cell values as percent, number, etc
+  #' @param cols   List of column names to format
+  #'
   format_rows <- function(gt_tbl,
                           format = "percent",
-                          cols = NULL) {
+                          cols = NULL,
+                          ...) {
 
     if (is.null(cols)) {
-      cols <- names(gt_tbl)
+      cols <- gt_tbl$`_data` %>% names()
     }
 
     if (format == "percent") {
       gt_tbl <- gt_tbl %>%
-        fmt_percent(columns = all_of(cols), decimals = 0)
+        fmt_percent(columns = all_of(cols), decimals = 0, ...)
     }
 
     if (format == "number") {
       gt_tbl <- gt_tbl %>%
-        fmt_number(columns = all_of(cols), use_seps = TRUE, decimals = 0)
+        fmt_number(columns = all_of(cols), use_seps = TRUE, decimals = 0, ...)
+    }
+
+    if (format == "date") {
+      gt_tbl <- gt_tbl %>%
+        fmt_date(columns = all_of(cols), date_style = 1, ...)
+    }
+
+    if (format == "missing") {
+      gt_tbl <- gt_tbl %>%
+        fmt_missing(columns = all_of(cols), missing_text = "--", ...)
     }
 
     return(gt_tbl)
   }
 
   #' @title Header
-  table_header <- function(gt_tbl, tbl_title, tbl_subtible = NULL) {
+  #'
+  #' @param gt_tbl         GT Table
+  #' @param tbl_title      Table Title
+  #' @param tbl_subtitle   Table Sub-title
+  #'
+  table_header <- function(gt_tbl, tbl_title,
+                           tbl_subtible = NULL) {
 
     if (is.null(tbl_subtible)) {
       tbl_subtible <- ""
@@ -233,6 +190,10 @@
   }
 
   #' @title Footer
+  #'
+  #' @param gt_tbl GT Table
+  #' @param note   Note for the table footer
+  #'
   table_footer <- function(gt_tbl, note = "") {
     gt_tbl <- gt_tbl %>%
       tab_source_note(
