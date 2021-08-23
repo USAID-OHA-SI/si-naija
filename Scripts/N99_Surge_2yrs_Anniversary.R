@@ -3,6 +3,7 @@
 ##  PURPOSE: TX_CURR Results Trend by Gender
 ##  LICENCE: MIT
 ##  DATE:    2021-03-08
+##  UPDATED: 2021-08-23
 
 
 # DEPENDENCIES ----
@@ -42,6 +43,10 @@
   # MER Data - get the latest MSD PSNU x IM file
   file_psnu_im <- dir_merdata %>%
     return_latest(pattern = "^MER_.*_PSNU_IM_.*_\\d{8}_v\\d{1}_1_N.*.zip$")
+
+  rep_pd <- file_psnu_im %>% identify_pd()
+  msd_version <- ifelse(str_detect(file_psnu_im, ".*_\\d{8}_v1_\\d"), "i", "c")
+  msd_caption <- rep_pd %>% paste0(msd_version)
 
   # Shapefile path
   file_shp <- dir_geodata %>%
@@ -132,39 +137,48 @@
       geom_rect(aes(xmin = -Inf, ymin = min, xmax = Inf, ymax = max),
                 fill = grey10k, alpha = .1) +
       geom_hline(yintercept = min, color = usaid_lightgrey,
-                 linetype = "dashed", lwd = 1) +
+                 linetype = "dashed", lwd = .5) +
       geom_hline(yintercept = max, color = usaid_lightgrey,
-                 linetype = "solid", lwd = 1) +
+                 linetype = "solid", lwd = .5) +
       geom_col(aes(fill = value), show.legend = F) +
       geom_line(aes(y = value + gap_top, group = 1), color = usaid_darkgrey) +
       geom_label(aes(y = value + gap_top, label = comma(value)),
-                 size = 4, color = grey90k) +
-      annotate("text", x = surge, y = gap_bottom,
-               label = "Surge >>", color = grey90k) +
-      annotate("segment", x = start, xend = surge,
-               y = max - gap_bottom, yend = max - gap_bottom,
-               arrow = arrow(), size = .8, color = usaid_lightgrey) +
+                 size = 4, color = grey90k)
+
+    if (indicator == "TX_CURR") {
+      viz <- viz +
+        annotate("text", x = surge, y = gap_bottom,
+                 label = "SURGE", color = grey90k)
+    }
+
+    viz <- viz +
+      # annotate("segment", x = start, xend = surge,
+      #          y = max - gap_bottom, yend = max - gap_bottom,
+      #          arrow = arrow(), size = 1, color = usaid_lightgrey) +
       annotate("text", x = start , y = max - (gap_bottom/2) ,
-               label = "Gain", color = grey90k) +
+               label = "GAIN", color = grey90k) +
       scale_fill_si(
         palette = ind_colors,
         discrete = FALSE,
         alpha = 0.9
       ) +
       labs(x = "", y = "",
-           title = paste0(indicator, " (USAID Only)"),
-           caption = paste0(
-             indicator,
-             " Targets: ",
-             "FY19 = ", comma(t_fy19),
-             ", FY20 = ", comma(t_fy20),
-             ", FY21 = ", comma(t_fy21),
-             "\nSource: DATIM MSD FY20Q1c - Produced by OHA/SIEI/SI on ",
-                            format(Sys.Date(), "%Y%m%d"))) +
+           title = paste0(indicator)
+           # caption = paste0(
+           #   indicator,
+           #   " Targets: ",
+           #   "FY19 = ", comma(t_fy19),
+           #   ", FY20 = ", comma(t_fy20),
+           #   ", FY21 = ", comma(t_fy21),
+           #   "\nSource: DATIM MSD ",
+           #   msd_caption,
+           #   " - Produced by OHA/SIEI/SI on ",
+           #                  format(Sys.Date(), "%Y%m%d"))
+           ) +
       si_style_nolines() +
       theme(
         axis.text.y = element_blank(),
-        axis.text.x = element_text(size = 10)
+        axis.text.x = element_text(size = 10, face = "bold")
       )
 
     print(viz)
