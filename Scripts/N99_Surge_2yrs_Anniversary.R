@@ -137,18 +137,18 @@
       geom_rect(aes(xmin = -Inf, ymin = min, xmax = Inf, ymax = max),
                 fill = grey10k, alpha = .1) +
       geom_hline(yintercept = min, color = usaid_lightgrey,
-                 linetype = "dashed", lwd = .5) +
+                 linetype = "dashed", lwd = .8) +
       geom_hline(yintercept = max, color = usaid_lightgrey,
-                 linetype = "solid", lwd = .5) +
+                 linetype = "solid", lwd = .8) +
       geom_col(aes(fill = value), show.legend = F) +
       geom_line(aes(y = value + gap_top, group = 1), color = usaid_darkgrey) +
       geom_label(aes(y = value + gap_top, label = comma(value)),
-                 size = 4, color = grey90k)
+                 size = 4, fontface = "bold", color = usaid_black)
 
     if (indicator == "TX_CURR") {
       viz <- viz +
         annotate("text", x = surge, y = gap_bottom,
-                 label = "SURGE", color = grey90k)
+                 label = "SURGE", fontface = "bold", color = grey90k)
     }
 
     viz <- viz +
@@ -156,7 +156,7 @@
       #          y = max - gap_bottom, yend = max - gap_bottom,
       #          arrow = arrow(), size = 1, color = usaid_lightgrey) +
       annotate("text", x = start , y = max - (gap_bottom/2) ,
-               label = "GAIN", color = grey90k) +
+               label = "GAIN", fontface = "bold", color = usaid_black) +
       scale_fill_si(
         palette = ind_colors,
         discrete = FALSE,
@@ -178,7 +178,7 @@
       si_style_nolines() +
       theme(
         axis.text.y = element_blank(),
-        axis.text.x = element_text(size = 10, face = "bold")
+        axis.text.x = element_text(size = 10, face = "bold", color = usaid_black)
       )
 
     print(viz)
@@ -194,6 +194,9 @@
         width = 10,
         height = 6)
     }
+    else (
+      return(viz)
+    )
   }
 
 # LOAD DATA ----
@@ -275,6 +278,27 @@
 
 # VIZ ----
 
+  df_surge %>%
+    filter(indicator == 'TX_CURR') %>%
+    ggplot(aes(x = reorder(period3, pd_order), y = value)) +
+    geom_col(aes(fill = value), show.legend = F) +
+    geom_line(aes(y = value + 15000, group = 1), color = usaid_darkgrey) +
+    geom_hline(yintercept = 0, color = usaid_darkgrey) +
+    geom_label(aes(y = value + 15000,
+                   label = comma(value)),
+               size = 4,
+               color = grey90k) +
+    scale_fill_si(
+      palette = "genoas",
+      discrete = FALSE,
+      alpha = 0.8
+    ) +
+    labs(x = "", y = "") +
+    si_style_nolines() +
+    theme(
+      axis.text.y = element_blank(),
+      axis.text.x = element_text(size = 10, face = "bold")
+    )
 
   df_surge %>% surge_trend(df_targets)
   df_surge %>% surge_trend(df_targets, "HTS_TST_POS")
@@ -284,27 +308,32 @@
     pull() %>%
     map(~surge_trend(df_surge, df_targets, .x, save = TRUE))
 
-  df_surge %>%
-    filter(indicator == 'TX_CURR') %>%
-    ggplot(aes(x = reorder(period3, pd_order), y = value)) +
-      geom_col(aes(fill = value), show.legend = F) +
-      geom_line(aes(y = value + 15000, group = 1), color = usaid_darkgrey) +
-      geom_hline(yintercept = 0, color = usaid_darkgrey) +
-      geom_label(aes(y = value + 15000,
-                     label = comma(value)),
-                 size = 4,
-                 color = grey90k) +
-      scale_fill_si(
-        palette = "genoas", #"burnt_siennas",
-        discrete = FALSE,
-        alpha = 0.8
-      ) +
-      labs(x = "", y = "") +
-      si_style_nolines() +
-      theme(
-        axis.text.y = element_blank(),
-        axis.text.x = element_text(size = 10)
-      )
+  plot_tx_curr <- surge_trend(df_surge, df_targets,
+                              indicator = "TX_CURR")
+
+  plot_prep_curr <- surge_trend(df_surge, df_targets,
+                              indicator = "PrEP_CURR")
+
+  plot_kp_prev <- surge_trend(df_surge, df_targets,
+                              indicator = "KP_PREV")
+
+  plot_viz <- plot_tx_curr / (plot_prep_curr + plot_kp_prev)
+
+
+  si_save(
+    filename = file.path(
+      dir_graphics,
+      paste0("NIGERIA - TX_CURR - PrEP_CURR - KP_PREV Trend since start of surge - ",
+             format(Sys.Date(), "%Y%m%d"),
+             ".png")),
+    plot = plot_viz,
+    width = 10,
+    height = 6)
+
+
+
+
+
 
 
 
