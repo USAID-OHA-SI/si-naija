@@ -4,7 +4,6 @@
 ##  LICENCE: MIT
 ##  DATE:    2021-06-21
 
-
 # PACKAGES -------------------------------------------------
 
   library(tidyverse)
@@ -17,7 +16,7 @@
   library(gisr)
   library(janitor)
   library(extrafont)
-  library(ICPIutilities)
+  library(gophr)
   library(gt)
 
 # GLOBAL --------------------------------------------------
@@ -159,13 +158,13 @@ plot_change <- function(df,
 
   # OPU Data ----
 
-  #df_opu <- tame_dp(file_cop20_targets)
+  df_opu <- tame_dp(file_cop20_targets)
 
   df_opu <- import_dp(filepath = file_cop20_targets)
 
   df_opu %>% glimpse()
 
-  #df_dp2 <- reshape_dp(df_dp)
+  #df_dp2 <- reshape_dp(df_opu)
 
   key_cols <- c("psnu", "indicator_code", "age", "sex", "keypop")
 
@@ -174,7 +173,7 @@ plot_change <- function(df,
     names()
 
   df_dp <- df_opu %>%
-    select(key_cols, mechs) %>%
+    select(all_of(c(key_cols, mechs))) %>%
     tidyr::pivot_longer(-key_cols,
                         names_to = c("mech_code", "indicatortype"),
                         names_sep = "_") %>%
@@ -272,26 +271,33 @@ plot_change <- function(df,
   df_dp <- df_dp %>%
     get_names(map_names = TRUE)
 
+  #df_dp <- df_dp %>% order_vars()
+
+  #df_dp <- df_dp %>% apply_class()
+
+  df_dp %>% glimpse()
+
+  df_dp_psnu_states <- df_dp %>%
+
+
 
 ## TARGETS ----
 
-  df_dp %>%
-    distinct(age) %>%
-    arrange(age) %>%
-    pull()
+  # Current MSD
+  df_psnu_states <- df_msd %>%
+    filter(standardizeddisaggregate == "Total Numerator",
+           str_to_lower(fundingagency) != "dedup") %>%
+    group_by(fiscal_year, fundingagency, psnu, indicator) %>%
+    summarise(across(targets, sum, na.rm = TRUE), .groups = "drop") %>%
+    clean_agency() %>%
+    pivot_wider(names_from = fiscal_year, values_from = targets) %>%
+    arrange(fundingagency, psnu)
 
-  df_dp %>%
-    distinct(agecoarse)
+  df_dp %>% distinct(disaggregate) %>% pull()
 
-  # State level Summary
-  df_dp %>%
-    group_by(psnu, indicator) %>%
-    summarise(across(value, sum, na.rm = TRUE)) %>%
-    ungroup() %>%
-    filter(indicator == 'TX_CURR',
-           psnu %in% c("Delta", "Enugu", "Gombe", "Lagos")) %>%
-    rename(targets = value) %>%
-    gt()
+  df_dp %>% distinct(age) %>% pull() %>% sort()
+
+  df_dp %>% distinct(agecoarse)
 
   # Indicators / age coarse
   df_dp %>%
@@ -299,6 +305,31 @@ plot_change <- function(df,
     distinct(indicator) %>%
     arrange(indicator) %>%
     pull()
+
+  df_dp %>%
+    distinct(indicator) %>%
+    arrange(indicator) %>%
+    pull()
+
+  # State level Summary
+
+  df_dp %>%
+    filter(disaggregate == "Total Numerator") %>%
+    group_by(fundingagency, psnu, indicator) %>%
+    summarise(across(value, sum, na.rm = TRUE)) %>%
+    ungroup() %>%
+    gt()
+
+  df_dp %>%
+    filter(disaggregate == "Total Numerator") %>%
+    group_by(fundingagency, psnu, indicator) %>%
+    summarise(across(value, sum, na.rm = TRUE)) %>%
+    ungroup() %>%
+    filter(indicator == 'TX_CURR',
+           psnu %in% c("Delta", "Enugu", "Gombe", "Lagos")) %>%
+    rename(targets = value) %>%
+    gt()
+
 
   # Priotization table
   df_dp %>%

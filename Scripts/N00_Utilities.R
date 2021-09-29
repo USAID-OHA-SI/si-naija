@@ -4,6 +4,7 @@
 ##  PURPOSE: Utility functions
 ##  LICENCE: MIT
 ##  DATE:    2021-07-12
+##
 
 
 ## FUNCTIONS ----
@@ -69,7 +70,7 @@ sum_group <- function(df,
 }
 
 
-#' @title
+#' @title TX_ML Disaggs
 #'
 tx_nocontact <- function(df,
                          sum_var = 'cumulative',
@@ -94,7 +95,81 @@ tx_nocontact <- function(df,
            ))
 }
 
-## DATA
+
+#' @title Clean Mechs
+#'
+clean_mechs <- function(.data) {
+
+  .data %>%
+    mutate(
+      mech_name = case_when(
+        # USAID
+        mech_name == "Meeting Targets and Maintaining Epidemic Control (EpiC)" ~ "EpiC",
+        mech_name == "STRENGHTENING INTERGRATED DELIVERY OF HIV/AIDS SERVICES(SIDHAS)" ~ "SIDHAS",
+        mech_name == "SHARP Task Order 1" ~ "SHARP TO1",
+        mech_name == "Strategic HIV/AIDS Response Program (SHARP) Task Order 2" ~ "SHARP TO2",
+        mech_name == "Strategic HIV/AIDS Response Program (SHARP) Task Order 3" ~ "SHARP TO3",
+        mech_name == "Reaching Impact, Saturation and Epidemic Control (RISE)" ~ "RISE",
+        mech_name == "Care and Treatment in Sustained Support (CaTSS)" ~ "CaTSS",
+        mech_name == "KP CARE 1" ~ "KP CARE 1",
+        mech_name == "KP CARE 2" ~ "KP CARE 2",
+        mech_name == "MSH - Prevention Organisation Systems AIDS Care and Treatment(MSH -ProACT)" ~ "ProACT",
+        mech_name == "Integrated MARPs HIV Prevention Program (IMHIPP)" ~ "IMHIPP",
+        mech_name == "Integrated Child Health and Social Services Award (ICHSSA 1)" ~ "ICHSSA 1",
+        mech_name == "Integrated Child Health and Social Services Award (ICHSSA 2)" ~ "ICHSSA 2",
+        mech_name == "Integrated Child Health and Social Services Award (ICHSSA 3)" ~ "ICHSSA 3",
+        mech_name == "Integrated Child Health and Social Services Award (ICHSSA 4)" ~ "ICHSSA 4",
+        # CDC
+        mech_name == "Partnering Effectively to end AIDS through Results and Learning (PEARL)_2097" ~ "PEARL",
+        mech_name == "Global Action towards HIV Epidemic Control in Subnational units in Nigeria (4GATES PROJECT)_2100" ~ "4GATES",
+        mech_name == "ACTION to Control HIV Epidemic through Evidence (ACHIEVE)_2099" ~ "ACHIEVE",
+        mech_name == "Improving Comprehensive AIDS Response Enhanced for Sustainability (iCARES)_2098" ~ "iCARES",
+        TRUE ~ mech_name
+      )
+    )
+}
+
+
+#' @title Clean Partners
+#'
+clean_partners <- function(.data) {
+
+  .data %>%
+    mutate(
+      primepartner = case_when(
+        # USAID
+        primepartner == "Family Health International" ~ "FHI 360",
+        primepartner == "Chemonics International, Inc." ~ "Chemonics",
+        primepartner == "JHPIEGO CORPORATION" ~ "JHPIEGO",
+        primepartner == "SOCIETY FOR FAMILY HEALTH" ~ "SFH",
+        primepartner == "HEARTLAND ALLIANCE LTD-GTE" ~ "HEARTLAND ALLIANCE",
+        primepartner == "Heartland Alliance International, LLC" ~ "Heartland Alliance",
+        primepartner == "CENTER FOR CLINICAL CARE AND CLINICAL RESEARCH LTD GTE" ~ "C4C3R",
+        primepartner == "ASSOCIATION FOR REPRODUCTIVE AND FAMILY HEALTH" ~ "A4RFH",
+        primepartner == "PRO-HEALTH INTERNATIONAL" ~ "ProHI",
+        primepartner == "Management Sciences For Health, Inc." ~ "MHS",
+        # CDC
+        primepartner == "APIN PUBLIC HEALTH INITIATIVES LTD/GTE" ~ "APHI",
+        primepartner == "INSTITUTE OF HUMAN VIROLOGY" ~ "IHVN",
+        primepartner == "CATHOLIC CARITAS FOUNDATION OF NIGERIA" ~ "CCFN",
+        primepartner == "CENTRE FOR INTEGRATED HEALTH PROGRAMS" ~ "CIHP",
+        TRUE ~ primepartner
+      )
+    )
+}
+
+
+#' @title Create labels for partners
+#'
+partners_label <- function(.data) {
+  .data %>%
+    clean_mechs() %>%
+    clean_partners() %>%
+    mutate(partner = paste0(primepartner, " - ", mech_name))
+}
+
+
+## DATA ----
 
   df_psnu %>% glimpse()
 
