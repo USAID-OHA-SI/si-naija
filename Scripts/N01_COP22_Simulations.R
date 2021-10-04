@@ -15,11 +15,7 @@
   library(glitr)
   library(glamr)
   library(janitor)
-  library(extrafont)
-  library(scales)
-  library(gt)
-  library(ggdist)
-  library(ggridges)
+
 
 # GLOBAL ----
 
@@ -250,7 +246,7 @@ identify_pds <- function(df_msd,
   curr_fy <- df_msd %>% identifypd(pd_type = "year")
 
   # All fiscal years (up to curr fy)
-  curr_fys <- df_sites %>%
+  curr_fys <- df_msd %>%
     distinct(fiscal_year) %>%
     arrange(desc(fiscal_year)) %>%
     pull()
