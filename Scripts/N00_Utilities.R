@@ -1,4 +1,3 @@
-##
 ##  PROJECT: SI Support for Nigeria
 ##  AUTHOR:  Baboyma Kagniniwa | USAID
 ##  PURPOSE: Utility functions
@@ -12,15 +11,16 @@
   library(glamr)
   library(glitr)
   library(scales)
+  library(extrafont)
 
 ## FUNCTIONS ----
 
-#' @title Summarise Indicators Values
+#' @title Summarize Indicators Values
 #'
 #' @param df
 #' @param inds
 #' @param disags
-#' @param values
+#' @param sum_vars
 #' @param ...
 #'
 sum_indicator <- function(df,
@@ -70,26 +70,73 @@ sum_group <- function(df,
   # Summarise
   df %>%
     group_by(...) %>%
-    summarise(across(all_of(sum_vars), sum, na.rm = TRUE)) %>%
-    ungroup()
+    summarise(across(all_of(sum_vars), sum, na.rm = TRUE), .groups = "drop")
+}
 
+#' @title Ellipsis
+#'
+test_ellipsis <- function(...) {
+  args <- list(...)
+  print(class(args))
+  print(length(args))
+  print(args %>% unlist)
+  print(c(...))
+}
+
+#' @title Convert Ellipsis to Vector
+#'
+#' @param ... Additional and varing number of function parmeters
+#'
+ellipsis_args <- function(...) {
+
+  #args <- list(...)
+
+  args <- as.character(substitute(...()))
+
+  return(args)
 }
 
 
-#' @title TX_ML Disaggs
+#' @title Unpack TX_ML Disaggs
 #'
-tx_nocontact <- function(.data,
-                         sum_var = 'cumulative',
+unpack_tx_ml <- function(.data,
+                         sum_vars = 'cumulative',
+                         unpack_iit = TRUE,
                          ...) {
 
-  .data %>%
-    sum_indicator(inds = 'TX_ML',
-                  disags = 'Age/Sex/ARTNoContactReason/HIVStatus',
-                  sum_vars = sum_var, ...) %>%
-    rename(indicator = otherdisaggregate,
-           #value = {{sum_var}}
-           ) %>%
-    mutate(indicator = str_remove(indicator, "No Contact Outcome - "),
+  # Ellipsis parameters
+  cols_grp <- ellipsis_args(...)
+
+  # Check cols availability
+  cols_req <- c("indicator",
+                "standardizeddisaggregate",
+                "otherdisaggregate")
+
+  if (all(cols_req %ni% names(.data))) {
+    print(cols_req)
+    stop("Missing required columns from the dataset")
+  }
+
+  if ("indicator" %ni% cols_grp) {
+    print("Adding `indicator` in group variables")
+
+    cols_grp <- c(cols_grp, "indicator")
+  }
+
+  # Indicators
+  ind <- "TX_ML"
+  disag <- "Age/Sex/ARTNoContactReason/HIVStatus"
+
+  if (ind %ni% .data $indicator | disag %ni% .data$standardizeddisaggregate) {
+    print(paste0(ind, " :: ", disag))
+    stop("Missing required values from the dataset's indicator or disaggs")
+  }
+
+  # Filter and Summarize TX_ML data
+  df_tx_ml <- .data %>%
+    filter(indicator == ind, standardizeddisaggregate == disag) %>%
+    mutate(indicator = otherdisaggregate,
+           indicator = str_remove(indicator, "No Contact Outcome - "),
            indicator = str_replace(indicator, "Interruption in Treatment", "IIT"),
            indicator = str_replace(indicator, " Treatment", ""),
            indicator = case_when(
@@ -99,9 +146,217 @@ tx_nocontact <- function(.data,
              indicator == 'Refused Stopped' ~ 'TX_ML_REF_STOPPED',
              indicator == 'Died' ~ 'TX_ML_DIED',
              TRUE ~ 'TX_ML_OTHER'
-           ))
+           )) %>%
+    #group_by(...) %>%
+    group_by_at(vars(all_of(cols_grp))) %>%
+    summarise(across(all_of(sum_vars), sum, na.rm = TRUE), .groups = "drop")
+
+  # Group IIT <3m & 3m+ into 1 category
+  if (!unpack_iit) {
+
+    cols <- setdiff(names(df_tx_ml), c(sum_vars, "indicator"))
+
+    print(cols)
+
+    df_tx_ml <- df_tx_ml %>%
+      filter(str_detect(indicator, "IIT")) %>%
+      group_by_at(all_of(cols)) %>%
+      summarise(across(all_of(sum_vars), sum, na.rm = TRUE), .groups = "drop") %>%
+      mutate(indicator = "TX_ML_IIT") %>%
+      bind_rows(df_tx_ml, .) %>%
+      filter(str_detect(indicator, "TX_ML_IIT_.*", negate = TRUE))
+  }
+
+  return(df_tx_ml)
 }
 
+# df_psnu %>%
+#   filter(indicator %in% tx_inds) %>%
+#   unpack_tx_ml(sum_vars = "cumulative",
+#                unpack_iit = T,
+#                fiscal_year, fundingagency, operatingunit, psnu) %>%
+#   prinf()
+
+
+#' @title Summarize TX_CURR with No Contacts
+#'
+#'
+tx_nocontact <- function(.data,
+                         rep_pd = "FY21Q3",
+                         unpack = "ml",
+                         ...) {
+
+  # ... arguments
+  cols_grp <- ellipsis_args(...)
+
+  if (!"indicator" %in% cols_grp) {
+    cols_grp <- c(cols_grp, "indicator")
+  }
+
+  cols_tx_grp <- c(cols_grp, "standardizeddisaggregate", "otherdisaggregate")
+
+  cols_tx_ml <- c(cols_grp, "value")
+
+
+  ## Indicators
+  inds <- c(
+    'TX_CURR',
+    'TX_NEW',
+    'TX_RTT',
+    'TX_ML',
+    'TX_NET_NEW')
+
+  ind_levels1 <- c(
+    'TX_CURR_LAG1',
+    'TX_NEW',
+    'TX_RTT',
+    'TX_CURR_ADJ',
+    'TX_ML',
+    'TX_NET_NEW',
+    'TX_CURR')
+
+  ind_levels2 <- c(
+    'TX_CURR_LAG1',
+    'TX_NEW',
+    'TX_RTT',
+    'TX_CURR_ADJ',
+    'TX_ML_XFRED_OUT',
+    'TX_ML_IIT',
+    'TX_ML_REF_STOPPED',
+    'TX_ML_DIED',
+    'TX_NET_NEW',
+    'TX_CURR')
+
+  ind_levels3 <- c(
+    'TX_CURR_LAG1',
+    'TX_NEW',
+    'TX_RTT',
+    'TX_CURR_ADJ',
+    'TX_ML_XFRED_OUT',
+    'TX_ML_IIT_LT3M',
+    'TX_ML_IIT_3MPLUS',
+    'TX_ML_REF_STOPPED',
+    'TX_ML_DIED',
+    'TX_NET_NEW',
+    'TX_CURR')
+
+  # Periods: curr + prev
+  hist_pds <- .data %>% identify_pds(pd_end = rep_pd, len = 2)
+
+  curr_pd <- hist_pds[1]
+  prev_pd <- hist_pds[2]
+
+  # TX_CURR, NET_NEW, RTT & TX_ML
+  df_tx <- NULL
+
+  # Filter based on unpacking method
+  if (is.null(unpack)) {
+    df_tx <- df_psnu %>%
+      filter(indicator %in% inds &
+               standardizeddisaggregate == 'Total Numerator')
+  } else {
+    df_tx <- df_psnu %>%
+      filter(indicator %in% inds[inds != "TX_ML"] &
+               standardizeddisaggregate == "Age/Sex/HIVStatus" |
+             indicator == "TX_ML" &
+               standardizeddisaggregate == "Age/Sex/ARTNoContactReason/HIVStatus")
+  }
+
+  # Initial Summary
+  df_tx <- df_tx %>%
+    #sum_group(sum_vars = paste0("qtr", 1:4), keep_group = F, standardizeddisaggregate, ...) %>%
+    reshape_msd() %>%
+    filter(period == curr_pd | (period == prev_pd & indicator == "TX_CURR")) %>%
+    mutate(
+      indicator = case_when(
+        indicator == "TX_CURR" & period == prev_pd ~ "TX_CURR_LAG1",
+        TRUE ~ indicator)) %>%
+    select(-c(period, period_type)) %>%
+    group_by_at(all_of(cols_tx_grp)) %>%
+    summarise(across(all_of("value"), sum, na.rm = TRUE), .groups = "drop")
+
+  # Unpack ML
+  if (is.null(unpack)) {
+
+    ind_levels <- ind_levels1
+
+    df_tx <- df_tx %>%
+      group_by_at(all_of(cols_grp)) %>%
+      summarise(across(all_of("value"), sum, na.rm = TRUE), .groups = "drop")
+
+  } else if (unpack == "ml") {
+
+    ind_levels <- ind_levels2
+
+    df_tx_ml <- df_tx %>%
+      unpack_tx_ml(sum_vars = "value", unpack_iit = F, ...)
+
+    df_tx <- df_tx %>%
+      filter(indicator != "TX_ML") %>%
+      select(all_of(cols_tx_ml)) %>%
+      bind_rows(df_tx_ml)
+
+  } else if (unpack == "iit") {
+
+    ind_levels <- ind_levels3
+
+    df_tx_ml <- df_tx %>%
+      unpack_tx_ml(sum_vars = "value", unpack_iit = T, ...)
+
+    df_tx <- df_tx %>%
+      filter(indicator != "TX_ML") %>%
+      select(all_of(cols_tx_ml)) %>%
+      bind_rows(df_tx_ml)
+
+  } else {
+    stop("PARAM - Invalid `unpack` option")
+  }
+
+  # Labels => for scale_x_manual()
+  ind_labels <- case_when(
+    ind_levels == "TX_CURR" ~ curr_pd,
+    ind_levels == "TX_CURR_LAG1" ~ prev_pd,
+    TRUE ~ NA_character_
+  )
+
+  # summarize and adjust
+  df_tx <- df_tx %>%
+    filter(indicator %in% ind_levels[1:3]) %>%
+    group_by_at(vars(-c(indicator, value))) %>%
+    summarise(across(value, sum, na.rm = T), .groups = "drop") %>%
+    mutate(indicator = "TX_CURR_ADJ") %>%
+    bind_rows(df_tx, .) %>%
+    mutate(indicator = factor(indicator, levels = ind_levels, ordered = T)) %>%
+    group_by_at(vars(-c(indicator, value))) %>%
+    mutate(
+      label_value = case_when(
+        str_detect(indicator, "TX_ML") ~ -1 * value,
+        TRUE ~ value
+      ),
+      label_changes = case_when(
+        str_detect(indicator, "NEW|RTT|ML") ~ str_remove(indicator, "TX_"),
+        TRUE ~ NA_character_
+      ),
+      label_stages = case_when(
+        indicator == "TX_CURR" ~ curr_pd,
+        indicator == "TX_CURR_LAG1" ~ prev_pd,
+        TRUE ~ NA_character_
+      ),
+      label = case_when(
+        !is.na(label_changes) ~ paste0(label_changes, "\n", comma(value)),
+        TRUE ~ comma(value)
+      ))
+
+  return(df_tx)
+}
+
+
+tx_nocontact(.data = df_psnu,
+             rep_pd = curr_pd,
+             #unpack = NULL,
+             #unpack = "ml",
+             unpack = "iit",
+             fundingagency, operatingunit, indicator)
 
 #' @title Clean Mechs
 #'
@@ -262,8 +517,7 @@ identify_pds <- function(df_msd,
   df_psnu %>%
     filter(fiscal_year == curr_fy,
            indicator == 'TX_ML',
-           standardizeddisaggregate %in%
-             c('Total Numerator', 'Age/Sex/ARTNoContactReason/HIVStatus')) %>%
+           standardizeddisaggregate %in% c('Total Numerator', 'Age/Sex/ARTNoContactReason/HIVStatus')) %>%
     distinct(otherdisaggregate) %>%
     arrange(otherdisaggregate)
 
@@ -297,18 +551,18 @@ identify_pds <- function(df_msd,
     'TX_NET_NEW',
     'TX_CURR')
 
+
+  # Labels
   tx_ind_labels1 <- case_when(
       tx_ind_levels1 == "TX_CURR" ~ curr_pd,
       tx_ind_levels1 == "TX_CURR_LAG1" ~ prev_pd,
-      tx_ind_levels1 == "TX_CURR_ADJ" ~ "???",
-      TRUE ~ ""
+      TRUE ~ NA_character_
     )
 
   tx_ind_labels2 <- case_when(
     tx_ind_levels2 == "TX_CURR" ~ curr_pd,
     tx_ind_levels2 == "TX_CURR_LAG1" ~ prev_pd,
-    tx_ind_levels2 == "TX_CURR_ADJ" ~ "???",
-    TRUE ~ ""
+    TRUE ~ NA_character_
   )
 
 
@@ -330,21 +584,20 @@ identify_pds <- function(df_msd,
 
   df_tx <- df_psnu %>%
     filter(indicator %in% tx_inds) %>%
-    sum_indicator(inds = tx_inds,
+    sum_indicator(fundingagency = "USAID",
+                  inds = tx_inds,
                   disags = 'Total Numerator',
                   sum_vars = paste0("qtr", 1:4),
                   fiscal_year, fundingagency, operatingunit, indicator) %>%
     reshape_msd() %>%
     select(-period_type) %>%
-    filter(period == curr_pd | period == prev_pd & indicator == "TX_CURR") %>%
+    filter(period == curr_pd | (period == prev_pd & indicator == "TX_CURR")) %>%
     mutate(
       indicator = case_when(
         indicator == "TX_CURR" & period == prev_pd ~ "TX_CURR_LAG1",
         TRUE ~ indicator),
       indicator = factor(indicator, levels = tx_ind_levels1)) %>%
-    select(-period)
-
-  df_tx <- df_tx %>%
+    select(-period) %>%
     filter(indicator %in% tx_ind_levels1[1:3]) %>%
     group_by_at(vars(-c(indicator, value))) %>%
     summarise(across(value, sum, na.rm = T)) %>%
@@ -354,41 +607,44 @@ identify_pds <- function(df_msd,
     mutate(indicator = factor(indicator, levels = tx_ind_levels1, ordered = T)) %>%
     group_by_at(vars(-c(indicator, value))) %>%
     mutate(
-      index = row_number(),
-      label_change = case_when(
+      label_changes = case_when(
         str_detect(indicator, "NEW|RTT|ML") ~ str_remove(indicator, "TX_"),
         TRUE ~ NA_character_
       ),
-      label_tx = case_when(
+      label_stages = case_when(
         indicator == "TX_CURR" ~ curr_pd,
         indicator == "TX_CURR_LAG1" ~ prev_pd,
-        indicator == "TX_CURR_ADJ" ~ "???",
         TRUE ~ NA_character_
+      ),
+      label = case_when(
+        !is.na(label_changes) ~ paste0(label_changes, "\n", comma(value)),
+        TRUE ~ comma(value)
       ))
 
 
   df_tx_viz <- df_tx %>%
-    group_by_at(vars(-c(indicator, value, index, label_change, label_tx))) %>%
+    group_by_at(vars(-c(indicator, value, label_changes, label_stages, label))) %>%
     arrange(indicator) %>%
     mutate(
-      index = row_number(),
       ymin = case_when(
         str_detect(indicator, "TX_CURR") ~ 0,
         indicator == "TX_NEW" ~ lag(value, 1),
-        indicator == "TX_RTT" ~ lag(value, 1) + value,
+        indicator == "TX_RTT" ~ lag(value, 1) + lag(value, 2),
         indicator == "TX_NET_NEW" ~ first(value),
         str_detect(indicator, "TX_ML") ~ lag(value, 1) - value,
         TRUE ~ value
       ),
-      ymax = case_when(
-        str_detect(indicator, "TX_CURR") ~ value,
-        indicator == "TX_NEW" ~ ymin + value,
-        indicator == "TX_RTT" ~ ymin + value,
-        indicator == "TX_NET_NEW" ~ ymin + value,
-        str_detect(indicator, "TX_ML") ~ ymin + value,
-        TRUE ~ value
-      )) %>%
-    ungroup()
+      ymin2 = 0,
+      ymax = ymin + value) %>%
+    ungroup() %>%
+    mutate(
+      color = case_when(
+        str_detect(indicator, 'TX_CURR_LAG1$|TX_CURR$') ~ scooter,
+        str_detect(indicator, "TX_NEW|TX_RTT") ~ genoa,
+        indicator == "TX_CURR_ADJ" ~ trolley_grey,
+        indicator == "TX_NET_NEW" ~ genoa_light,
+        TRUE ~ burnt_sienna
+      ))
 
 
 
@@ -401,12 +657,23 @@ identify_pds <- function(df_msd,
     ggplot() +
     geom_rect(aes(xmin = as.integer(indicator) - w,
                   xmax = as.integer(indicator) + w,
+                  ymin = 0,
+                  ymax = ymax,
+                  fill = trolley_grey_light)) +
+    geom_rect(aes(xmin = as.integer(indicator) - w,
+                  xmax = as.integer(indicator) + w,
                   ymin = ymin,
-                  ymax = ymax)) +
-    geom_text(aes(x = indicator, y = ymax, label = comma(value)), vjust = -1) +
-    geom_text(aes(x = indicator, y = ymin, label = label_change), vjust = 1) +
+                  ymax = ymax,
+                  fill = color)) +
+    #geom_text(aes(x = as.integer(indicator), y = ymax, label = label), vjust = -1) +
+    geom_text(aes(x = as.integer(indicator), y = ymax, label = comma(value)), vjust = -1) +
+    geom_text(aes(x = as.integer(indicator), y = ymin, label = label_changes), vjust = 1) +
+    scale_fill_identity() +
     scale_x_discrete(limits = tx_ind_labels1) +
-    facet_wrap(~fundingagency)
+    facet_wrap(~fundingagency) +
+    labs(x = "", y = "") +
+    si_style_nolines() +
+    theme(axis.text.y = element_blank())
 
 
 
