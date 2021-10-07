@@ -212,33 +212,33 @@ tx_nocontact <- function(.data,
     'TX_RTT',
     'TX_CURR_ADJ',
     'TX_ML',
-    'TX_NET_NEW',
-    'TX_CURR')
+    'TX_CURR',
+    'TX_NET_NEW')
 
   ind_levels2 <- c(
     'TX_CURR_LAG1',
     'TX_NEW',
     'TX_RTT',
     'TX_CURR_ADJ',
-    'TX_ML_XFRED_OUT',
     'TX_ML_IIT',
+    'TX_ML_XFRED_OUT',
     'TX_ML_REF_STOPPED',
     'TX_ML_DIED',
-    'TX_NET_NEW',
-    'TX_CURR')
+    'TX_CURR',
+    'TX_NET_NEW')
 
   ind_levels3 <- c(
     'TX_CURR_LAG1',
     'TX_NEW',
     'TX_RTT',
     'TX_CURR_ADJ',
-    'TX_ML_XFRED_OUT',
     'TX_ML_IIT_LT3M',
     'TX_ML_IIT_3MPLUS',
+    'TX_ML_XFRED_OUT',
     'TX_ML_REF_STOPPED',
     'TX_ML_DIED',
-    'TX_NET_NEW',
-    'TX_CURR')
+    'TX_CURR',
+    'TX_NET_NEW')
 
   # Periods: curr + prev
   hist_pds <- .data %>% identify_pds(pd_end = rep_pd, len = 2)
@@ -264,7 +264,6 @@ tx_nocontact <- function(.data,
 
   # Initial Summary
   df_tx <- df_tx %>%
-    #sum_group(sum_vars = paste0("qtr", 1:4), keep_group = F, standardizeddisaggregate, ...) %>%
     reshape_msd() %>%
     filter(period == curr_pd | (period == prev_pd & indicator == "TX_CURR")) %>%
     mutate(
@@ -326,7 +325,47 @@ tx_nocontact <- function(.data,
     summarise(across(value, sum, na.rm = T), .groups = "drop") %>%
     mutate(indicator = "TX_CURR_ADJ") %>%
     bind_rows(df_tx, .) %>%
-    mutate(indicator = factor(indicator, levels = ind_levels, ordered = T)) %>%
+    mutate(indicator = factor(indicator, levels = ind_levels, ordered = T)) #%>%
+    # group_by_at(vars(-c(indicator, value))) %>%
+    # mutate(
+    #   label_value = case_when(
+    #     str_detect(indicator, "TX_ML") ~ -1 * value,
+    #     TRUE ~ value
+    #   ),
+    #   label_changes = case_when(
+    #     str_detect(indicator, "NEW|RTT") ~ str_remove(indicator, "TX_"),
+    #     indicator == "TX_ML" ~ str_remove(indicator, "TX_"),
+    #     str_detect(indicator, "XFR") ~ "XFR-OUT",
+    #     str_detect(indicator, "REF") ~ "R-STOP",
+    #     str_detect(indicator, "REF") ~ "R-STOP",
+    #     str_detect(indicator, "ITT_LT3M") ~ "ITT <3mo",
+    #     str_detect(indicator, "ITT_3MPLUS") ~ "ITT 3mo+",
+    #     str_detect(indicator, "ADJ") ~ "ADJ",
+    #     str_detect(indicator, "TX_ML_.*") ~ str_remove(indicator, "TX_ML_"),
+    #     TRUE ~ ""
+    #   ),
+    #   label_stages = case_when(
+    #     indicator == "TX_CURR" ~ curr_pd,
+    #     indicator == "TX_CURR_LAG1" ~ prev_pd,
+    #     TRUE ~ ""
+    #   ),
+    #   label = case_when(
+    #     !is.na(label_changes) ~ paste0(label_changes, "\n", comma(value)),
+    #     TRUE ~ comma(value)
+    #   ))
+
+  return(df_tx)
+}
+
+#' @title Prep TX_ML data for Plot
+#'
+tx_ml_colors <- function(.data) {
+
+  cols <- .data %>%
+    select(!(indicator:last_col())) %>%
+    names()
+
+  .data %>%
     group_by_at(vars(-c(indicator, value))) %>%
     mutate(
       label_value = case_when(
@@ -334,29 +373,139 @@ tx_nocontact <- function(.data,
         TRUE ~ value
       ),
       label_changes = case_when(
-        str_detect(indicator, "NEW|RTT|ML") ~ str_remove(indicator, "TX_"),
-        TRUE ~ NA_character_
+        str_detect(indicator, "NEW|RTT") ~ str_remove(indicator, "TX_"),
+        indicator == "TX_ML" ~ str_remove(indicator, "TX_"),
+        str_detect(indicator, "XFR") ~ "XFR-OUT",
+        str_detect(indicator, "REF") ~ "R-STOP",
+        str_detect(indicator, "REF") ~ "R-STOP",
+        str_detect(indicator, "ITT_LT3M") ~ "ITT <3mo",
+        str_detect(indicator, "ITT_3MPLUS") ~ "ITT 3mo+",
+        str_detect(indicator, "ADJ") ~ "ADJ",
+        str_detect(indicator, "TX_ML_.*") ~ str_remove(indicator, "TX_ML_"),
+        TRUE ~ ""
       ),
       label_stages = case_when(
         indicator == "TX_CURR" ~ curr_pd,
         indicator == "TX_CURR_LAG1" ~ prev_pd,
-        TRUE ~ NA_character_
+        TRUE ~ ""
       ),
       label = case_when(
         !is.na(label_changes) ~ paste0(label_changes, "\n", comma(value)),
         TRUE ~ comma(value)
+      )) %>%
+    ungroup() %>%
+    group_by_at(all_of(cols)) %>%
+    arrange(indicator) %>%
+    mutate(
+      ymin = case_when(
+        indicator == "TX_CURR_ADJ" ~ value,
+        str_detect(indicator, "TX_CURR") ~ 0,
+        indicator == "TX_NEW" ~ lag(value, 1),
+        indicator == "TX_RTT" ~ lag(cumsum(value), 1),
+        str_detect(indicator, "TX_ML") ~ value[indicator == "TX_CURR_ADJ"] - cumsum(ifelse(str_detect(indicator, "TX_ML"), value, 0)),
+        indicator == "TX_NET_NEW" ~ value[indicator == "TX_CURR_LAG1"],
+        TRUE ~ value
+      ),
+      ymax = case_when(
+        indicator == "TX_CURR_ADJ" ~ value,
+        TRUE ~ ymin + value
+      )) %>%
+    ungroup() %>%
+    mutate(
+      color = case_when(
+        indicator %in% c('TX_CURR_LAG1', 'TX_CURR') ~ scooter,
+        indicator %in% c("TX_NEW", "TX_RTT") ~ genoa,
+        indicator == "TX_CURR_ADJ" ~ grey30k,
+        indicator == "TX_NET_NEW" ~ genoa_light,
+        TRUE ~ burnt_sienna # for all the TX_ML
       ))
-
-  return(df_tx)
 }
 
 
-tx_nocontact(.data = df_psnu,
-             rep_pd = curr_pd,
-             #unpack = NULL,
-             #unpack = "ml",
-             unpack = "iit",
-             fundingagency, operatingunit, indicator)
+#' @title Plot TX_ML data
+#'
+tx_ml_bars <- function(.data, ...) {
+
+  # Bar width
+  w <- .96/2
+
+  # Split data
+  df_viz <- .data %>%
+    filter(indicator != "TX_NET_NEW")
+
+  df_nn <- .data %>%
+    filter(indicator == "TX_NET_NEW")
+
+  # limits
+  n_ind <- df_viz %>%
+    distinct(indicator) %>%
+    pull() %>%
+    length()
+
+  xlim_labels <- df_viz %>%
+    distinct(label_stages) %>%
+    filter(label_stages != "") %>%
+    pull(label_stages) %>%
+    paste0("TX_CURR\n(", ., ")")
+
+  xlim_labels <- xlim_labels %>%
+    append(x = .,
+           values = rep("", times = n_ind - length(xlim_labels)),
+           after = 1)
+
+  # Plot bar chart
+  viz <- ggplot(data = df_viz) +
+    geom_rect(aes(xmin = as.integer(indicator) - w,
+                  xmax = as.integer(indicator) + w,
+                  ymin = 0,
+                  ymax = ymax,
+                  fill = trolley_grey_light)) +
+    geom_rect(aes(xmin = as.integer(indicator) - w,
+                  xmax = as.integer(indicator) + w,
+                  ymin = ymin,
+                  ymax = ymax,
+                  fill = color)) +
+    geom_text(aes(x = as.integer(indicator),
+                  y = ymax,
+                  label = comma(label_value)),
+              color = usaid_black,
+              vjust = -1) +
+    geom_text(aes(x = as.integer(indicator),
+                  y = ymin,
+                  label = label_changes),
+              color = usaid_black,
+              vjust = 1.4) +
+    geom_segment(data = df_nn,
+                 aes(x = as.integer(indicator) - 1 - w,
+                     xend = as.integer(indicator) - 1 + w,
+                     y = ymin,
+                     yend = ymin),
+                 size = 1,
+                 color = grey10k) +
+    geom_curve(data = df_nn,
+               aes(x = as.integer(indicator) - 1 - (w/2),
+                   xend = as.integer(indicator) - 1 - (w/2),
+                   y = ymin - value,
+                   yend = ymin + (value / 2)),
+               arrow = arrow(length = unit(0.1, "inches"), type = "closed"),
+               curvature = -0.5,
+               #angle = 90,
+               size = 1,
+               color = grey10k) +
+    geom_text(data = df_nn,
+              aes(x = as.integer(indicator) - 1,
+                  y = ymin - value,
+                  label = paste0("NN\n", comma(value))),
+              color = grey10k) +
+    scale_fill_identity() +
+    scale_x_discrete(limits = xlim_labels) +
+    facet_wrap(vars(...)) +
+    labs(x = "", y = "") +
+    si_style_nolines() +
+    theme(axis.text.y = element_blank())
+
+  return(viz)
+}
 
 #' @title Clean Mechs
 #'
@@ -485,6 +634,14 @@ identify_pds <- function(df_msd,
 
 ## DATA ----
 
+  # MSDs
+  df_sites <- glamr::return_latest(
+    folderpath = glamr::si_path(),
+    pattern = "Site_IM_.*_Nigeria") %>%
+    gophr::read_msd()
+
+  df_sites %>% glimpse()
+
   df_psnu <- glamr::return_latest(
     folderpath = glamr::si_path(),
     pattern = "PSNU_IM_.*_Nigeria") %>%
@@ -512,342 +669,31 @@ identify_pds <- function(df_msd,
   df_psnu <- df_psnu %>%
     filter(indicator %in% tx_inds)
 
-  ## TX_ML Categories
-
-  df_psnu %>%
-    filter(fiscal_year == curr_fy,
-           indicator == 'TX_ML',
-           standardizeddisaggregate %in% c('Total Numerator', 'Age/Sex/ARTNoContactReason/HIVStatus')) %>%
-    distinct(otherdisaggregate) %>%
-    arrange(otherdisaggregate)
-
+  ## TX_ML - Other Disaggs Categories
   # 1 No Contact Outcome - Died
   # 2 No Contact Outcome - Interruption in Treatment <3 Mon~
   # 3 No Contact Outcome - Interruption in Treatment 3+ Mon~
   # 4 No Contact Outcome - Refused Stopped Treatment
   # 5 No Contact Outcome - Transferred Out
-  # 6 NA
-
-  tx_ind_levels1 <- c(
-    'TX_CURR_LAG1',
-    'TX_NEW',
-    'TX_RTT',
-    'TX_CURR_ADJ',
-    'TX_ML',
-    'TX_NET_NEW',
-    'TX_CURR')
-
-  tx_ind_levels2 <- c(
-    'TX_CURR_LAG1',
-    'TX_NEW',
-    'TX_RTT',
-    'TX_CURR_ADJ',
-    'TX_ML',
-    'TX_ML_XFRED_OUT',
-    'TX_ML_IIT_LT3M',
-    'TX_ML_ITT_3MPLUS',
-    'TX_ML_REF_STOPPED',
-    'TX_ML_DIED',
-    'TX_NET_NEW',
-    'TX_CURR')
 
 
-  # Labels
-  tx_ind_labels1 <- case_when(
-      tx_ind_levels1 == "TX_CURR" ~ curr_pd,
-      tx_ind_levels1 == "TX_CURR_LAG1" ~ prev_pd,
-      TRUE ~ NA_character_
-    )
 
-  tx_ind_labels2 <- case_when(
-    tx_ind_levels2 == "TX_CURR" ~ curr_pd,
-    tx_ind_levels2 == "TX_CURR_LAG1" ~ prev_pd,
-    TRUE ~ NA_character_
-  )
-
-
-  # Reshape TX_ML Disags
-  df_psnu %>%
-    filter(fiscal_year == curr_fy) %>%
-    tx_nocontact(sum_var = 'cumulative',
-                 fiscal_year, fundingagency,
-                 operatingunit, otherdisaggregate)
-
-  df_psnu %>%
-    filter(fiscal_year == curr_fy) %>%
-    tx_nocontact(sum_var = 'cumulative',
-                 fiscal_year, fundingagency,
-                 operatingunit, psnu, otherdisaggregate)
-
-
-  # TX_CURR, NET_NEW, RTT & TX_ML
-
-  df_tx <- df_psnu %>%
-    filter(indicator %in% tx_inds) %>%
-    sum_indicator(fundingagency = "USAID",
-                  inds = tx_inds,
-                  disags = 'Total Numerator',
-                  sum_vars = paste0("qtr", 1:4),
-                  fiscal_year, fundingagency, operatingunit, indicator) %>%
-    reshape_msd() %>%
-    select(-period_type) %>%
-    filter(period == curr_pd | (period == prev_pd & indicator == "TX_CURR")) %>%
-    mutate(
-      indicator = case_when(
-        indicator == "TX_CURR" & period == prev_pd ~ "TX_CURR_LAG1",
-        TRUE ~ indicator),
-      indicator = factor(indicator, levels = tx_ind_levels1)) %>%
-    select(-period) %>%
-    filter(indicator %in% tx_ind_levels1[1:3]) %>%
-    group_by_at(vars(-c(indicator, value))) %>%
-    summarise(across(value, sum, na.rm = T)) %>%
-    ungroup() %>%
-    mutate(indicator = "TX_CURR_ADJ") %>%
-    bind_rows(df_tx, .) %>%
-    mutate(indicator = factor(indicator, levels = tx_ind_levels1, ordered = T)) %>%
-    group_by_at(vars(-c(indicator, value))) %>%
-    mutate(
-      label_changes = case_when(
-        str_detect(indicator, "NEW|RTT|ML") ~ str_remove(indicator, "TX_"),
-        TRUE ~ NA_character_
-      ),
-      label_stages = case_when(
-        indicator == "TX_CURR" ~ curr_pd,
-        indicator == "TX_CURR_LAG1" ~ prev_pd,
-        TRUE ~ NA_character_
-      ),
-      label = case_when(
-        !is.na(label_changes) ~ paste0(label_changes, "\n", comma(value)),
-        TRUE ~ comma(value)
-      ))
-
-
-  df_tx_viz <- df_tx %>%
-    group_by_at(vars(-c(indicator, value, label_changes, label_stages, label))) %>%
-    arrange(indicator) %>%
-    mutate(
-      ymin = case_when(
-        str_detect(indicator, "TX_CURR") ~ 0,
-        indicator == "TX_NEW" ~ lag(value, 1),
-        indicator == "TX_RTT" ~ lag(value, 1) + lag(value, 2),
-        indicator == "TX_NET_NEW" ~ first(value),
-        str_detect(indicator, "TX_ML") ~ lag(value, 1) - value,
-        TRUE ~ value
-      ),
-      ymin2 = 0,
-      ymax = ymin + value) %>%
-    ungroup() %>%
-    mutate(
-      color = case_when(
-        str_detect(indicator, 'TX_CURR_LAG1$|TX_CURR$') ~ scooter,
-        str_detect(indicator, "TX_NEW|TX_RTT") ~ genoa,
-        indicator == "TX_CURR_ADJ" ~ trolley_grey,
-        indicator == "TX_NET_NEW" ~ genoa_light,
-        TRUE ~ burnt_sienna
-      ))
 
 
 
 # VIZ ----
 
-  w <- .96/2
+  df_test <- df_psnu %>%
+    tx_nocontact(rep_pd = curr_pd,
+                 #unpack = NULL,
+                 #unpack = "ml",
+                 unpack = "iit",
+                 fundingagency) %>% clean_agency()
 
-  df_tx_viz %>%
+  df_test <- df_test %>%
+    tx_ml_colors()
+
+  df_test %>%
     filter(fundingagency != "DOD") %>%
-    ggplot() +
-    geom_rect(aes(xmin = as.integer(indicator) - w,
-                  xmax = as.integer(indicator) + w,
-                  ymin = 0,
-                  ymax = ymax,
-                  fill = trolley_grey_light)) +
-    geom_rect(aes(xmin = as.integer(indicator) - w,
-                  xmax = as.integer(indicator) + w,
-                  ymin = ymin,
-                  ymax = ymax,
-                  fill = color)) +
-    #geom_text(aes(x = as.integer(indicator), y = ymax, label = label), vjust = -1) +
-    geom_text(aes(x = as.integer(indicator), y = ymax, label = comma(value)), vjust = -1) +
-    geom_text(aes(x = as.integer(indicator), y = ymin, label = label_changes), vjust = 1) +
-    scale_fill_identity() +
-    scale_x_discrete(limits = tx_ind_labels1) +
-    facet_wrap(~fundingagency) +
-    labs(x = "", y = "") +
-    si_style_nolines() +
-    theme(axis.text.y = element_blank())
+    tx_ml_bars(fundingagency)
 
-
-
-## OLD ----
-
-  df_tx_waterfall <- df_tx %>%
-    group_by(fiscal_year, fundingagency, operatingunit) %>%
-    mutate(value_base = case_when(
-      indicator == 'TX_CURR_LAG1' ~ 0,
-      indicator == 'TX_CURR' ~ 0,
-      indicator == 'TX_NEW' ~ value[indicator == 'TX_CURR_LAG1'],
-      indicator == 'TX_RTT' ~ value[indicator == 'TX_CURR_LAG1'] + value[indicator == 'TX_NEW'],
-      indicator == 'TX_ML' ~ (value[indicator == 'TX_CURR_LAG1'] + value[indicator == 'TX_NEW'] + value[indicator == 'TX_RTT']) - value[indicator == 'TX_ML'],
-      #indicator == 'TX_NET_NEW' ~ value[indicator == 'TX_CURR_LAG1'],
-      TRUE ~ 0
-    )) %>%
-    ungroup()
-
-  df_tx_waterfall <- df_tx_waterfall %>%
-    filter(indicator == 'TX_RTT') %>%
-    rowwise() %>%
-    mutate(indicator = 'TX_CURR_ADJ',
-           value = value + value_base,
-           value_base = 0) %>%
-    ungroup() %>%
-    bind_rows(df_tx_waterfall)
-
-  df_tx_waterfall <- df_tx_waterfall %>%
-    mutate(indicator = ordered(indicator, levels = ind_levels)) %>%
-    #filter(fundingagency != "DOD") %>%
-    filter(fundingagency == "USAID") %>%
-    pivot_longer(cols = starts_with("value"),
-                 names_to = "metric", values_to = "value") %>%
-    mutate(metric_color = case_when(
-      metric == 'value' & indicator == 'TX_CURR_ADJ' ~ grey30k,
-      metric == 'value' & str_detect(indicator, 'TX_CURR') ~ scooter,
-      metric == 'value' & indicator %in% c('TX_NEW', 'TX_RTT') ~ genoa_light,
-      metric == 'value' & indicator %in% c('TX_ML') ~ old_rose,
-      metric == 'value_base' & value > 0 ~ trolley_grey_light
-    ))
-
-  # Labels
-  df_tx_curr_labels <- df_tx_waterfall %>%
-    filter(str_detect(indicator, "TX_CURR"),
-           metric == 'value')
-
-  df_tx_other_labels <- df_tx_waterfall %>%
-    sum_group(sum_vars = 'value', keep_group = TRUE,
-              fiscal_year, fundingagency, operatingunit, indicator) %>%
-    filter(!str_detect(indicator, "TX_CURR"),
-           metric == 'value') %>%
-    mutate(label = case_when(
-      str_detect(indicator, "ML") ~ paste0("-", comma(value)),
-      TRUE ~ paste0("+", comma(value))))
-
-  # VIZ ----
-  df_tx_waterfall %>%
-    ggplot(aes(x = indicator)) +
-    geom_col(aes(y = value, fill = metric_color)) +
-    geom_hline(yintercept = 0, color = grey50k) +
-    geom_text(data = df_tx_curr_labels,
-              aes(x = indicator, y = value,
-                  label = comma(value, 1)),
-              vjust = 1.5, color = grey10k) +
-    geom_text(data = df_tx_other_labels,
-              aes(x = indicator,
-                  y = value_ttl,
-                  label = label),
-                  vjust = -1, color = grey70k) +
-    scale_fill_identity() +
-    #scale_y_continuous(position = "right", labels = comma) +
-    facet_wrap(~fundingagency) +
-    labs(x = "", y = "") +
-    si_style_nolines()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-df <- df_psnu %>%
-  filter(fiscal_year %in% c(prev_fy, curr_fy),
-         indicator %in% c('TX_CURR', 'TX_PVLS')) %>%
-  mutate(indicator = paste0(indicator, "_", numeratordenom)) %>%
-  group_by(fiscal_year, operatingunit, fundingagency, psnu, mech_name,
-           standardizeddisaggregate, sex, trendsfine, indicator) %>%
-  summarise_at(vars(starts_with("qtr")), sum, na.rm = TRUE) %>%
-  ungroup() %>%
-  reshape_msd("long")
-
-df %>%
-  filter(indicator == 'TX_CURR_N') %>%
-  group_by(fundingagency, psnu, mech_name,
-           standardizeddisaggregate, sex, trendsfine, indicator) %>%
-  mutate(TX_CURR_LAG2 = lag(value, 2, order_by = period),
-         TX_CURR_LAG1 = lag(value, 1, order_by = period)) %>%
-  #select(-TX_CURR) %>%
-  ungroup() %>%
-  gather(indicator, value = val, TX_PVLS_D:TX_CURR_LAG1, na.rm = TRUE)
-
-df_psnu %>%
-  filter(indicator == 'TX_CURR') %>%
-  distinct(standardizeddisaggregate)
-
-df_psnu %>%
-  filter(indicator == "TX_CURR",
-       standardizeddisaggregate %in% c("Total Numerator", "KeyPop/HIVStatus"),
-       fundingagency == "USAID",
-       str_detect(psnu, "_Military", negate = TRUE),
-       fiscal_year == 2021) %>%
-  count(operatingunit, psnuuid, psnu, standardizeddisaggregate,
-        wt = cumulative,
-        sort = T) %>%
-  spread(standardizeddisaggregate, n, fill = 0)%>%
-  mutate(kp_share = `KeyPop/HIVStatus` / `Total Numerator`)
-
-
-df_psnu %>%
-  filter(indicator == "TX_CURR",
-         standardizeddisaggregate == "Total Numerator",
-         str_detect(psnu, "_Military", negate = TRUE),
-         fiscal_year == 2021) %>%
-  group_by(operatingunit, countryname, snu1, psnu, psnuuid) %>%
-  summarise(across(c(cumulative, targets), sum, na.rm = TRUE)) %>%
-  ungroup() %>%
-  rename_with(~ glue("tx_curr_2021_{.x}"), .cols = c(cumulative, targets))
-
-
-
-
-#df_psnu %>% glimpse()
-
-df_psnu %>%
-  filter(indicator %in% 'TX_CURR',
-         standardizeddisaggregate %in% 'Total Numerator')
-
-df_psnu %>%
-  sum_indicator(inds = c('TX_CURR', 'TX_NEW'),
-                disags = 'Total Numerator',
-                values = c('cumulative', 'targets'),
-                fiscal_year, operatingunit, fundingagency, psnu, indicator)
-
-
-
-
-
-df_psnu %>%
-  sum_this_by(this = 'cumulative', fiscal_year, operatingunit, fundingagency, psnu)
