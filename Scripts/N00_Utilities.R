@@ -3,6 +3,7 @@
 ##  PURPOSE: Utility functions
 ##  LICENCE: MIT
 ##  DATE:    2021-07-12
+##  UPDATED: 2021-10-07
 ##
 
 ## Libraries ----
@@ -170,13 +171,6 @@ unpack_tx_ml <- function(.data,
   return(df_tx_ml)
 }
 
-# df_psnu %>%
-#   filter(indicator %in% tx_inds) %>%
-#   unpack_tx_ml(sum_vars = "cumulative",
-#                unpack_iit = T,
-#                fiscal_year, fundingagency, operatingunit, psnu) %>%
-#   prinf()
-
 
 #' @title Summarize TX_CURR with No Contacts
 #'
@@ -250,12 +244,12 @@ tx_nocontact <- function(.data,
   df_tx <- NULL
 
   # Filter based on unpacking method
-  if (is.null(unpack)) {
-    df_tx <- df_psnu %>%
+  if (is.null(unpack) | is.na(unpack)) {
+    df_tx <- .data %>%
       filter(indicator %in% inds &
                standardizeddisaggregate == 'Total Numerator')
   } else {
-    df_tx <- df_psnu %>%
+    df_tx <- .data %>%
       filter(indicator %in% inds[inds != "TX_ML"] &
                standardizeddisaggregate == "Age/Sex/HIVStatus" |
              indicator == "TX_ML" &
@@ -275,7 +269,7 @@ tx_nocontact <- function(.data,
     summarise(across(all_of("value"), sum, na.rm = TRUE), .groups = "drop")
 
   # Unpack ML
-  if (is.null(unpack)) {
+  if (is.null(unpack) | is.na(unpack)) {
 
     ind_levels <- ind_levels1
 
@@ -375,11 +369,13 @@ tx_ml_colors <- function(.data) {
       label_changes = case_when(
         str_detect(indicator, "NEW|RTT") ~ str_remove(indicator, "TX_"),
         indicator == "TX_ML" ~ str_remove(indicator, "TX_"),
+        #indicator == "TX_ML_IIT" ~ "ITT",
+        #indicator == "TX_ML_IIT_LT3M" ~ "ITT <3mo",
+        #indicator == "TX_ML_IIT_3MPLUS" ~ "ITT 3mo+",
         str_detect(indicator, "XFR") ~ "XFR-OUT",
         str_detect(indicator, "REF") ~ "R-STOP",
-        str_detect(indicator, "REF") ~ "R-STOP",
-        str_detect(indicator, "ITT_LT3M") ~ "ITT <3mo",
-        str_detect(indicator, "ITT_3MPLUS") ~ "ITT 3mo+",
+        str_detect(indicator, "IIT_LT3M") ~ "ITT <3mo",
+        str_detect(indicator, "IIT_3MPLUS") ~ "ITT 3mo+",
         str_detect(indicator, "ADJ") ~ "ADJ",
         str_detect(indicator, "TX_ML_.*") ~ str_remove(indicator, "TX_ML_"),
         TRUE ~ ""
@@ -632,68 +628,4 @@ identify_pds <- function(df_msd,
 
 
 
-## DATA ----
-
-  # MSDs
-  df_sites <- glamr::return_latest(
-    folderpath = glamr::si_path(),
-    pattern = "Site_IM_.*_Nigeria") %>%
-    gophr::read_msd()
-
-  df_sites %>% glimpse()
-
-  df_psnu <- glamr::return_latest(
-    folderpath = glamr::si_path(),
-    pattern = "PSNU_IM_.*_Nigeria") %>%
-  gophr::read_msd()
-
-  df_psnu %>% glimpse()
-
-  ## Fiscal Years
-  prev_fy <- df_psnu %>% identifypd(pd_type = "year", pd_prior = T)
-  curr_fy <- df_psnu %>% identifypd(pd_type = "year", pd_prior = F)
-
-  curr_pd <- df_psnu %>% identifypd()
-  prev_pd <- df_psnu %>% identifypd(pd_type = "full", pd_prior = T)
-
-  hist_pds <- df_psnu %>% identify_pds(pd_end = curr_pd, len = 2)
-
-  ## Indicators
-  tx_inds <- c(
-    'TX_CURR',
-    'TX_NEW',
-    'TX_RTT',
-    'TX_ML',
-    'TX_NET_NEW')
-
-  df_psnu <- df_psnu %>%
-    filter(indicator %in% tx_inds)
-
-  ## TX_ML - Other Disaggs Categories
-  # 1 No Contact Outcome - Died
-  # 2 No Contact Outcome - Interruption in Treatment <3 Mon~
-  # 3 No Contact Outcome - Interruption in Treatment 3+ Mon~
-  # 4 No Contact Outcome - Refused Stopped Treatment
-  # 5 No Contact Outcome - Transferred Out
-
-
-
-
-
-
-# VIZ ----
-
-  df_test <- df_psnu %>%
-    tx_nocontact(rep_pd = curr_pd,
-                 #unpack = NULL,
-                 #unpack = "ml",
-                 unpack = "iit",
-                 fundingagency) %>% clean_agency()
-
-  df_test <- df_test %>%
-    tx_ml_colors()
-
-  df_test %>%
-    filter(fundingagency != "DOD") %>%
-    tx_ml_bars(fundingagency)
 
