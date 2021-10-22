@@ -14,7 +14,9 @@
   library(gophr)
   library(glitr)
   library(glamr)
+  library(gisr)
   library(janitor)
+  library(gt)
 
 
 # GLOBAL ----
@@ -24,6 +26,7 @@
   dir_merdata <- glamr::si_path("path_msd")
   dir_datapack <- "../../PEPFAR/COUNTRIES/Nigeria/DataPack"
   dir_dp22 <- paste0(dir_datapack, "/DP-Nigeria-Version")
+  dir_assums <- paste0(dir_dp22, "/assumptions")
   dir_geodata <- glamr::si_path("path_vector")
   dir_terr <- glamr::si_path("path_raster")
 
@@ -35,8 +38,6 @@
   dir_graphics <- "Graphics"
 
 # Country name ----
-
-  country <- "Nigeria"
 
   # Country name
   cntry <- "Nigeria"
@@ -62,6 +63,10 @@
   file_spectrum <- return_latest(
     folderpath = dir_dp22,
     pattern = "^Spectrum extract .*.xlsx$")
+
+  file_assums <- return_latest(
+    folderpath = dir_assums,
+    pattern = "^FY22 - Targets Param.*.xlsx$")
 
   # Latest MSD PSNU x IM File
   file_msd_nat <- return_latest(
@@ -151,88 +156,6 @@ partners_label <- function(.data) {
     mutate(partner = paste0(primepartner, " - ", mech_name))
 }
 
-#' @title Extract Country Prioritization
-#'
-#'
-extract_prioritization <- function(dp_file,
-                                   sheet = "Prioritization") {
-  dp_file %>%
-    readxl::read_excel(sheet = sheet, skip = 13) %>%
-    janitor::clean_names() %>%
-    separate(psnu, into = c("psnu", "psnuuid"), sep = " \\[#SNU\\] \\[| \\[#Military\\] \\[") %>%
-    mutate(psnuuid = str_remove_all(psnuuid, "\\]")) %>%
-    rename_with(.cols = starts_with("impatt"), .fn = str_remove, pattern = "^impatt_")
-}
-
-
-#' @title Extract PLHIV Estimates
-#'
-#'
-extract_plhiv <- function(dp_file,
-                          sheet = "Spectrum") {
-
-  # Read Spectrum data
-  df_plhiv <- dp_file %>%
-    readxl::read_excel(sheet = sheet) %>%
-    janitor::clean_names()
-
-  # Position of psnu column
-  idx_ref_col <- which(names(df_plhiv) == "psnu")
-
-  # Remove junk cols
-  if (idx_ref_col > 1) {
-    rm_cols <- 1:(idx_ref_col - 1)
-
-    df_plhiv <- df_plhiv %>%
-      select(-all_of(rm_cols)) %>%
-      group_by(psnu) %>%
-      mutate(total_psnu = sum(value, na.rm = TRUE)) %>%
-      ungroup() %>%
-      relocate(total_psnu, .after = value)
-  }
-
-  return(df_plhiv)
-}
-
-
-#' @title Extract Indicators
-#'
-#'
-extract_indicators <- function(df_file) {
-  readxl::excel_sheets(df_file)
-}
-
-#' @title Global Funds Sites
-#'
-#'
-extract_assumptions <- function(trgt_file, sheet = 1) {
-
-  # Read file/sheet content
-  if (str_detect(trgt_file, ".xlsb$")) {
-    df_assum <- trgt_file %>%
-      readxlsb::read_xlsb(path = .,
-                          sheet = sheet,
-                          skip = 1,
-                          package = "readxlsb")
-  } else {
-    df_assum <- trgt_file %>%
-      readxl::read_excel(path = ., sheet = sheet, skip = 1)
-  }
-
-  # Clean data
-  df_assum %>%
-    janitor::clean_names() %>%
-    select(state, lga,
-           orgunit = organisation_unit_period,
-           sex, age,
-           site_high_vol = is_facility_a_high_volume_site_y_n,
-           site_high_plhiv = is_facility_in_a_high_plhiv_burden_state_y_n,
-           site_prev_gf = is_facility_a_previously_gf_site_y_n,
-           site_surge_state = is_state_a_surge_state_y_n,
-           site_sat_state = is_facility_in_a_saturated_state_y_n,
-           site_more_fund = will_there_be_extra_funding_from_pepfar_for_the_state_y_n)
-
-}
 
 #' @title Identify MSD Consecutive Periods
 #'
@@ -284,6 +207,37 @@ identify_pds <- function(df_msd,
   return(pds)
 }
 
+#' @title Update Modalities
+#'
+#'
+update_modalities <- function(df_msd,
+                              sep = "-",
+                              full = FALSE) {
+
+  df_msd <- df_msd %>%
+    mutate(
+      indicator = case_when(
+        str_detect(modality, "Mod$") ~ paste0(indicator, "_COM"),
+        TRUE ~ paste0(indicator, "_FAC")
+      ),
+      modality = case_when(
+        str_detect(modality, "Mod$") ~ str_remove(modality, "Mod$"),
+        str_detect(modality, "^Other*") ~ str_replace(modality, "^Other*", "Other "),
+        modality == "Inpat" ~ "Inpatient",
+        modality == "TBClinic" ~ "TB Clinic",
+        TRUE ~ modality
+      ),
+      modality = str_replace_all(modality, " ", sep)
+    )
+
+  if (full == TRUE) {
+    df_msd <- df_msd %>%
+      mutate(indicator = paste0(indicator, "_", modality))
+  }
+
+  return(df_msd)
+}
+
 
 #' @title Unpack HTS Modalities
 #'
@@ -325,69 +279,8 @@ unpack_modalities <- function(df_msd) {
 #' @title Calculate Results Increases
 #'
 #'
-calc_increases <- function(df_msd,
-                           ind = "TX_CURR",
-                           disag = "Age/Sex/HIVStatus") {
+calc_roi <- function(df_msd) {
 
-    print(paste0(ind, " => ", disag))
-
-    df_ind <- df_msd %>%
-      filter(indicator == ind & standardizeddisaggregate == disag)
-
-    print(df_ind %>% distinct(indicator) %>% pull())
-
-    # Take care of the Modalities
-    if (str_detect(disag, "Modality")) {
-      print("unpacking modalities .... ")
-
-      df_ind <- df_ind %>%
-        mutate(indicator = paste0(indicator, "_",
-                                  str_to_upper(sitetype), "_",
-                                  str_to_upper(str_replace_all(modality, " ", "_"))),
-               standardizeddisaggregate = NA_character_) %>%
-        bind_rows(df_ind, .)
-    }
-
-    # Summarise and calculate increase
-    df_ind_targets <- df_ind %>%
-      group_by(fiscal_year, psnuuid, psnu, orgunituid, sitename, indicator, ageasentered, sex) %>%
-      summarise(across(starts_with("qtr"), sum, na.rm = TRUE), .groups = "drop") %>%
-      ungroup() %>%
-      reshape_msd() %>%
-      select(-period_type) %>%
-      rename(age = ageasentered) %>%
-      group_by(psnuuid, psnu, orgunituid, sitename, indicator, age, sex) %>%
-      arrange(period) %>%
-      mutate(
-        increase = case_when(
-          ind %in% gophr::snapshot_ind ~ abs(last(value) - first(value)), # TODO: how about missing values at the bigin/end?
-          TRUE ~ sum(value, na.rm = TRUE)),
-        avg_increase = increase / length(value) # TODO: Exclude NA / Zero values?
-      ) %>%
-      ungroup() %>%
-      pivot_wider(names_from = period, values_from = value) %>%
-      relocate(increase, avg_increase, .after = last_col())
-
-    return(df_ind_targets)
-}
-
-#' @title Update Results Increases
-#'
-#'
-update_increases <- function(df_results, df_roi) {
-
-  df_results %>%
-    rowwise() %>%
-    mutate(assum_count = sum(c_across(starts_with("assum")) == "Y"),
-           assum_count = ifelse(is.na(assum_count) | !is.finite(assum_count), 0, assum_count),
-           ind_roi = first(df_roi$agency_roi[indicator == indicator]),
-           add_increase = ind_roi / 100 / assum_count,
-           add_increase = ifelse(is.na(add_increase) | !is.finite(add_increase), 0, add_increase),
-           final_increase = (1 + add_increase) * avg_increase,
-           total_increase = final_increase * 12) %>%
-    ungroup() %>%
-    mutate(global_increase = sum(total_increase),
-           prop_target = total_increase / global_increase)
 }
 
 #' @title Add Assumptions
@@ -395,172 +288,222 @@ update_increases <- function(df_results, df_roi) {
 #'
 add_assumptions <- function(df_results, assums) {
 
-  df_clean <- df_results %>%
-    left_join(assums$hvol, by = c("sitename" = "orgunit")) %>%
-    left_join(assums$hhiv, by = c("psnu" = "state")) %>%
-    left_join(assums$gf, by = c("sitename" = "orgunit")) %>%
-    left_join(assums$surge, by = c("psnu" = "state")) %>%
-    left_join(assums$saturation, by = c("psnu" = "state")) %>%
-    left_join(assums$funds, by = c("psnu" = "state"))
-
-  return(df_clean)
+  df_results %>%
+    left_join(assums$hvol,
+              by = c("psnu", "orgunituid", "sitename")) %>%
+    left_join(assums$gf,
+              by = c("psnu" = "state", "sitename" = "orgunit")) %>%
+    left_join(assums$states, by = c("psnu" = "state"))
 }
 
 
-## DATA ----
+#' @title Calculate Results Increases
+#'
+#'
+calc_increases <- function(df_msd, periods = NULL) {
 
-  # Orgs hierarchy ----
-  fac_lvl <- get_ouorglevel(operatingunit = country,
-                            org_type = "facility")
+  # Summarize and calculate increase
+  df_msd <- df_msd %>%
+    group_by(fiscal_year, psnuuid, psnu, orgunituid, sitename, partner, indicator, ageasentered, sex) %>%
+    summarise(across(starts_with("qtr"), sum, na.rm = TRUE), .groups = "drop") %>%
+    ungroup() %>%
+    reshape_msd() %>%
+    select(-period_type) %>%
+    rename(age = ageasentered)
 
-  df_orgs <- gisr::extract_locations(
-      country = country,
-      level = fac_lvl,
-      add_geom = T) %>%
-    extract_facilities()
+  # Filter datasets
+  if (!is.null(periods)) {
+    df_msd <- df_msd %>%
+      filter(period %in% periods)
+  }
 
-  df_orgs <- df_orgs %>%
-    select(operatingunit, countryname,
-           orgunit = name, facility_uid = id,
-           ends_with("tude"))
+  # Get latest
+  last_fy <- df_msd %>%
+    distinct(period) %>%
+    arrange(period) %>%
+    pull() %>%
+    last() %>%
+    str_sub(1, 4)
 
-  df_orgs %>% glimpse()
-
-  # Prioritization ----
-  df_prio <- file_prev_cop_targets %>%
-    extract_prioritization()
-
-  df_prio %>% glimpse()
-  df_prio %>% distinct(priority_snu_translation) %>% pull()
-
-  # PLHIV ----
-  df_plhiv <- file_prev_cop_targets %>%
-    extract_plhiv()
-
-  df_plhiv %>% glimpse()
-
-  df_plhiv %>% distinct(psnu, total_psnu)
-
-
-  # Assumptions ----
-  dt_sheets <- file_cop22_targets2 %>%
-    extract_indicators()
-
-  dt_sheets
-
-  df_assum <- file_cop22_targets2 %>%
-    extract_assumptions()
-
-  df_assum %>% glimpse()
-
-  df_assum_level <- tibble(
-      assum_id = 1:6,
-      assum_name = c("High volume site",
-                     "Site in high PLHIV burden state",
-                     "Previously a Global Fund site",
-                     "Site in a surge state",
-                     "Site in a saturated state",
-                     "More funds for state")
+  # Calculate increases
+  df_msd %>%
+    group_by(psnuuid, psnu, orgunituid, sitename, partner, indicator, age, sex) %>%
+    arrange(period) %>%
+    mutate(
+      record = case_when(is.na(value) | value > 0 ~ 1, TRUE ~ 0),
+      value_hist = length(value[record == 1]),
+      value_hist = case_when(
+        indicator %in% c("CXCA_SCRN", "GEND_GBV") ~ value_hist * 6,
+        TRUE ~ value_hist * 3
+      ),
+      value_start = first(value[record == 1]),
+      value_end = case_when(
+        indicator %in% gophr::snapshot_ind ~ last(value[record == 1]), # TODO: how about missing values at the bigin/end?
+        TRUE ~ sum(value, na.rm = TRUE)
+      ),
+      value_fy = case_when(
+        indicator %in% gophr::snapshot_ind ~ last(value[record == 1]),
+        TRUE ~ sum(value[str_detect(period, last_fy)], na.rm = TRUE)
+      ),
+      h_increase = value_end - value_start,
+      m_increase = h_increase / value_hist # TODO: Exclude NA / Zero values?
     ) %>%
-    mutate(assum_level = case_when(
-      str_detect(assum_name, "state") ~ "state",
-      TRUE ~ "site"
-    ))
+    ungroup() %>%
+    select(-record) %>%
+    pivot_wider(id_cols = -c(period, value), names_from = period, values_from = value) %>%
+    relocate(c(starts_with("value_"), ends_with("increase")), .after = last_col())
+}
 
-  ## A1: High Volume Site
-  df_hvol <- df_assum %>%
-    distinct(state, orgunit, site_high_vol) %>%
-    rename(assum_high_vol = site_high_vol)
+#' @title Update Results Increases
+#'
+#'
+update_increases <- function(df_results,
+                             df_roi,
+                             df_targets = NULL,
+                             indicator = "TX_CURR") {
 
-  ## A2: High PLHIV Burden
-  df_hhiv <- df_assum %>%
-    distinct(state, site_high_plhiv) %>%
-    rename(assum_high_plhiv = site_high_plhiv)
+  prev_target = 0
 
-  ## A3: Global Fund
-  df_gf <- df_assum %>%
-    distinct(state, orgunit, site_prev_gf) %>%
-    rename(assum_gf_site = site_prev_gf)
+  if (!is.null(df_targets)) {
+    prev_target <- df_targets %>%
+    filter(indicator == indicator) %>%
+    pull(value)
+  }
 
-  ## A4: Surge State
-  df_surge <- df_assum %>%
-    distinct(state, site_surge_state) %>%
-    rename(assum_surge_state = site_surge_state)
+  # # of Assumptions
+  len <- df_results %>%
+    select(starts_with("assum")) %>%
+    colnames() %>%
+    length()
 
-  ## A5: Program Saturation
-  df_sat <- df_assum %>%
-    distinct(state, site_sat_state) %>%
-    rename(assum_sat_state = site_sat_state)
+  df_results %>%
+    rowwise() %>%
+    mutate(
+      len_assum = len,
+      assum_count = sum(c_across(starts_with("assum")) == "Y"),
+      assum_count = ifelse(is.na(assum_count) | !is.finite(assum_count), 0, assum_count),
+      ind_roi = first(df_roi$agency_roi[indicator == indicator]),
+      add_increase = ind_roi / len_assum * assum_count,
+      add_increase = ifelse(is.na(add_increase) | !is.finite(add_increase), 0, add_increase),
+      total_m_increase = (1 + add_increase) * m_increase,
+      total_a_increase = round(total_m_increase * 12, 0),
+      total_result = value_fy,
+      est_target = total_result + total_a_increase
+    ) %>%
+    ungroup() %>%
+    group_by(indicator) %>%
+    mutate(
+      total_est_target = sum(est_target, na.rm = TRUE),
+      prop_est_target = est_target / total_est_target,
+      new_target = case_when(
+        prev_target == 0 | is.null(prev_target) | is.na(prev_target) ~ est_target,
+        TRUE ~ prop_est_target * prev_target
+      )) %>%
+    ungroup()
+}
 
-  ## A6: More Funding
-  df_funds <- df_assum %>%
-    distinct(state, site_more_fund) %>%
-    rename(assum_more_fund = site_more_fund)
+#' @title Estimate Targets
+#'
+#'
+estimate_targets <- function(df_msd,
+                             roi,
+                             lst_assums,
+                             targets = NULL,
+                             periods = NULL,
+                             indicator = "TX_CURR") {
+
+  df_targets <- df_msd %>%
+    filter(str_detect(indicator, {{indicator}})) %>%
+    calc_increases(periods = periods)
+
+  # Add assumptions to results
+  df_targets <- df_targets %>%
+    add_assumptions(assums = lst_assums) %>%
+    mutate(across(starts_with("assum"), ~ if_else(is.na(.), "N", .)))
+
+  # Calculate Increases
+  df_targets <- df_targets %>%
+    update_increases(df_roi = roi,
+                     df_targets = targets)
+
+  return(df_targets)
+}
 
 
-  ## A: Combine all assumptions
-  dfs_assums <- list(
-    "hvol"       = df_hvol %>% select(-state),
-    "hhiv"       = df_hhiv,
-    "gf"         = df_gf %>% select(-state),
-    "surge"      = df_surge,
-    "saturation" = df_sat,
-    "funds"      = df_funds
-  )
+#' @title Summarize Targets Estimations
+#'
+#'
+summarise_targets <- function(df_targets, ...) {
+  df_targets %>%
+    group_by(...) %>%
+    summarise(across(c(starts_with("value"),
+                       ends_with("increase"),
+                       total_result,
+                       ends_with("target")), sum, na.rm = T),
+              .groups = "drop") %>%
+    ungroup() %>%
+    select(-c(value_hist, add_increase, new_target)) %>%
+    mutate(total_est_target = sum(est_target, na.rm = TRUE),
+           prop_est_target = round(est_target / total_est_target * 100, 2))
+}
+
+# DATA ----
+
+  # MSD - PSNU x IM ----
+  df_psnu <- file_msd_psnu %>% read_msd()
+
+  df_psnu %>% glimpse()
+
+  df_psnu_targets <- df_psnu %>%
+    filter(fiscal_year == 2021,
+           fundingagency != "Dedup",
+           primepartner != "TBD",
+           standardizeddisaggregate == "Total Numerator") %>%
+    group_by(fiscal_year, fundingagency, operatingunit,
+             psnu, psnuuid, mech_code, mech_name, primepartner,
+             indicator) %>%
+    summarise(across(targets, sum, na.rm = TRUE)) %>%
+    ungroup()
 
 
   # MSD - Site x IM ----
   df_raw <- file_msd_sites %>% read_msd()
 
+  # Identify history period ----
+  curr_pd <- df_raw %>% identifypd()
+  curr_fy <- df_raw %>% identifypd(pd_type = "year")
+
+  len_pds = 6
+
+  hist_pds <- df_raw %>% identify_pds(pd_end = curr_pd, len = len_pds)
+  hist_yrs <- df_raw %>% identify_pds(pd_end = curr_pd, len = len_pds, pds_type = "year")
+
+  # Identify list of reference indicators ----
+  ref_ind_list <- c("CXCA_SCRN",  "GEND_GBV",
+                    "HTS_RECENT", "HTS_SELF",    "HTS_TST",
+                    "PMTCT_ART",  "PMTCT_STAT",
+                    "PrEP_CURR",  "PrEP_NEW",
+                    "TB_ART",     "TB_PREV",    "TB_PREV_D",
+                    "TB_STAT",    "TB_STAT_D",
+                    "TX_CURR",    "TX_NEW",
+                    "TX_PVLS",    "TX_PVLS_D",
+                    "TX_TB",      "TX_TB_D")
+
+  # Site Results Data ----
   df_sites <- df_raw %>%
-    filter(fundingagency == "USAID",
-           primepartner != "TBD",
-           sitetype != "Above Site") %>%
+    filter(fundingagency == agency,
+           fiscal_year %in% hist_yrs,
+           primepartner != "TBD") %>%
     select(-c(pre_rgnlztn_hq_mech_code, prime_partner_duns,
               award_number, source_name, cumulative)) %>%
     clean_agency() %>%
     clean_mechs() %>%
     clean_partners() %>%
-    partners_label()
-
-  # Identify list of reference indicators ----
-  ref_inds <- dt_sheets %>%
-    str_remove("(?<=\\().*") %>%
-    str_remove("\\(") %>%
-    str_trim() %>%
-    str_remove("_D$|_N$") %>%
-    unique()
-
-  ref_inds <- ref_inds[!str_detect(ref_inds, "HIV")]
-
-  ref_inds <- ref_inds %>%
-    c(., "HTS_TST") %>%
-    sort()
-
-  ref_inds
-
-  ref_ind_list <- c("CXCA_SCRN",  "GEND_GBV",
-                    "HTS_TST",    "HTS_RECENT", "HTS_SELF",
-                    "PMTCT_ART",  "PMTCT_STAT",
-                    "PrEP_CURR",  "PrEP_NEW",
-                    "TB_ART",     "TB_PREV",    "TB_STAT",
-                    "TX_CURR",    "TX_NEW",     "TX_PVLS",    "TX_TB")
-
-  df_sites <- df_sites %>%
-    filter(indicator %in% ref_ind_list) %>%
-    clean_indicator()
-
-  # Identify history period ----
-  curr_pd <- df_sites %>% identifypd()
-
-  hist_pds <- df_sites %>% identify_pds(pd_end = curr_pd, len = 6)
-  hist_yrs <- df_sites %>% identify_pds(pd_end = curr_pd, len = 6, pds_type = "year")
-
-  df_sites <- df_sites %>%
-    filter(fiscal_year %in% hist_yrs)
+    partners_label() %>%
+    clean_indicator() %>%
+    filter(indicator %in% ref_ind_list)
 
   # Indicator disaggs ----
-
   df_disaggs <- df_sites %>%
     distinct(indicator, standardizeddisaggregate) %>%
     filter(str_detect(standardizeddisaggregate, "Age|Sex")) %>%
@@ -572,33 +515,125 @@ add_assumptions <- function(df_results, assums) {
       disagg = case_when(
         indicator == "TX_CURR" ~ "Age/Sex/HIVStatus",
         indicator == "HTS_RECENT" ~ "Modality/Age/Sex/RTRI/HIVStatus",
+        indicator == "HTS_RECENT_D" ~ "Age/Sex/HIVIndication",
         indicator == "HTS_TST" ~ "Modality/Age/Sex/Result",
         TRUE ~ first(standardizeddisaggregate))
     ) %>%
     ungroup() %>%
     distinct(indicator, disagg)
 
-  df_disaggs2 <- df_disaggs %>%
-    mutate(value = 1) %>%
-    pivot_wider(names_from = disagg, values_from = value)
+  # Extract Indicators and corresponding disagg for age/sex
+  df_sites <- df_disaggs %>%
+    rename(ind = indicator) %>%
+    pmap_dfr(function(ind, disagg) {
+      df_sites %>%
+        filter(indicator == ind,
+               standardizeddisaggregate == disagg)
+    })
+
+  # Verify
+  df_sites %>%
+    distinct(indicator, standardizeddisaggregate) %>%
+    mutate(msd = TRUE) %>%
+    full_join(df_disaggs,
+              by = c("indicator",
+                     "standardizeddisaggregate" = "disagg"))
+
+  # HTS TST or RECENT ----
+
+  # Checkk HTS Modalities
+  df_sites %>%
+    filter(indicator %in% c("HTS_TST", "HTS_RECENT")) %>%
+    distinct(indicator, modality, sitetype) %>%
+    arrange(sitetype, indicator) %>%
+    prinf()
+
+  # Unpack modalities
+  df_sites <- df_sites %>%
+    filter(indicator %in% c("HTS_TST", "HTS_RECENT")) %>%
+    update_modalities(full = TRUE) %>%
+    bind_rows(df_sites, .) %>%
+    filter(!indicator %in% c("HTS_TST", "HTS_RECENT"))
+
+  df_sites %>% distinct(indicator) %>% pull()
+
+  # Assumptions ----
+  df_assum_level <- tibble(
+      assum_id = 1,
+      assum_name = c("High volume site",
+                     "Site in high PLHIV burden state",
+                     "Previously a Global Fund site",
+                     "Site in a surge state",
+                     "Site in a saturated state",
+                     "More funds for state")
+    ) %>%
+    mutate(
+      assum_level = case_when(
+        str_detect(assum_name, "state") ~ "state",
+        TRUE ~ "site"
+      ),
+      assum_id = row_number()
+    )
+
+  ## Parameters
+  df_assum_params <- file_assums %>%
+    read_excel(sheet = "Parameters")
+
+  df_assum_params %>%
+    select(-Note) %>%
+    gt::gt()
+
+  ## A: Read Assumptions
+
+  ## A1: High Volume
+  df_hvol <- NULL
+
+  ## A3: High Volume
+  df_gf <- file_assums %>%
+    read_excel(sheet = "Site Level Assumptions") %>%
+    select(state, orgunit, assum_gf_site)
+
+  df_gf %>% head(8) %>% gt::gt()
+
+  ## A2,4-6: High Volume
+  df_assum_states <- file_assums %>%
+    read_excel(sheet = "State Level Assumptions")
+
+  df_assum_states %>% gt::gt()
+
+  ## A: Combine all assumptions
+  dfs_assums <- list(
+    "hvol"       = tibble(),
+    "gf"         = df_gf,
+    "states"     = df_assum_states
+  )
+
+  # Update Assumption #1
+  df_hvol <- df_sites %>%
+    filter(indicator == "TX_CURR") %>%
+    select(fiscal_year, psnu, orgunituid, sitename, indicator, starts_with("qtr")) %>%
+    reshape_msd() %>%
+    filter(period == first(hist_pds)) %>%
+    group_by(psnu, orgunituid, sitename) %>%
+    summarise(volume = sum(value, na.rm = T), .groups = "drop") %>%
+    mutate(assum_high_vol = case_when(
+      volume >= 1000 ~ "Y",
+      TRUE ~ "N"
+    ))
+
+  df_hvol %>%
+    filter(str_detect(psnu, "_Mil", negate = T)) %>%
+    select(-orgunituid) %>%
+    arrange(desc(volume)) %>%
+    head(10) %>%
+    gt::gt()
+
+  dfs_assums$hvol <- df_hvol %>% select(-volume)
 
 
   # Partner x indicator summary ----
+
   df_partners <- df_sites %>%
-    filter(indicator %in% c("HTS_TST", "HTS_RECENT", "HTS_RECENT_D"),
-           standardizeddisaggregate %in% c("Modality/Age/Sex/Result",
-                                           "Modality/Age/Sex/RTRI/HIVStatus",
-                                           "Age/Sex/HIVIndication")) %>%
-    mutate(indicator = paste0(indicator, "_",
-                              str_to_upper(sitetype), "_",
-                              str_to_upper(str_replace_all(modality, " ", "_")))) %>%
-    bind_rows(df_sites, .) %>%
-    filter(fundingagency == "USAID",
-           standardizeddisaggregate %in% c("Total Numerator",
-                                           "Total Denominator",
-                                           "Modality/Age/Sex/Result",
-                                           "Modality/Age/Sex/RTRI/HIVStatus",
-                                           "Age/Sex/HIVIndication")) %>%
     group_by(fiscal_year, indicator, partner) %>%
     summarise(across(starts_with("qtr"), sum, na.rm = TRUE), .groups = "drop") %>%
     ungroup() %>%
@@ -609,50 +644,138 @@ add_assumptions <- function(df_results, assums) {
   # Partner RoI
   df_partners_roi <- df_partners %>%
     group_by(partner, indicator) %>%
-    mutate(partner_data_hist = length(which(value > 0)) * 3,
-           partner_ttl = sum(value, na.rm = TRUE),
-           partner_avg = mean(value[value > 0], na.rm = T),
-           partner_roi = partner_ttl / partner_avg) %>%
+    mutate(
+      partner_rcd = case_when(value > 0 ~ 1, TRUE ~ 0),
+      partner_hist = length(value[partner_rcd == 1]),
+      partner_hist = case_when(
+        indicator %in% c("CXCA_SCRN", "GEND_GBV") ~ partner_hist * 6,
+        TRUE ~ partner_hist * 3
+      ),
+      partner_start = first(value[partner_rcd == 1]),
+      partner_end = case_when(
+        indicator %in% gophr::snapshot_ind ~ last(value[partner_rcd == 1]),
+        TRUE ~ sum(value, na.rm = TRUE)
+      ),
+      partner_h_inc = partner_end - partner_start,
+      partner_m_inc = round(partner_h_inc / partner_hist, 0),
+      partner_roi = partner_h_inc / partner_hist / partner_start
+    ) %>%
     ungroup() %>%
-    filter(partner_ttl > 0) %>%
+    select(-partner_rcd) %>%
     group_by(indicator) %>%
     mutate(agency_roi = mean(partner_roi, na.rm = T)) %>%
-    pivot_wider(names_from = period, values_from = value) %>%
+    ungroup() %>%
+    pivot_wider(id_cols = -c(period, value),
+                names_from = period, values_from = value) %>%
     relocate(starts_with(c("partner_", "agency_")), .after = last_col())
 
   # Agency RoI
-  df_agency_roi <- df_partners_roi %>%
-    select(-starts_with("partner_")) %>%
-    group_by(indicator) %>%
-    summarise(across(starts_with("FY"), sum, na.rm = T)) %>%
+  df_agency_roi <- df_partners %>%
+    group_by(period, indicator) %>%
+    summarise(across(value, sum, na.rm = T), .groups = "drop") %>%
     ungroup() %>%
-    pivot_longer(cols = starts_with("FY"), names_to = "period", values_to = "value") %>%
     group_by(indicator) %>%
-    mutate(agency_data_hist = length(which(value > 0)) * 3,
-           agency_ttl = sum(value, na.rm = TRUE),
-           agency_avg = mean(value[value > 0], na.rm = T),
-           agency_roi = agency_ttl / agency_avg) %>%
+    mutate(
+      agency_rcd = case_when(value > 0 ~ 1, TRUE ~ 0),
+      agency_hist = length(value[agency_rcd == 1]),
+      agency_hist = case_when(
+        indicator %in% c("CXCA_SCRN", "GEND_GBV") ~ agency_hist * 6,
+        TRUE ~ agency_hist * 3
+      ),
+      agency_start = first(value[agency_rcd == 1]),
+      agency_end = case_when(
+        indicator %in% gophr::snapshot_ind ~ last(value[agency_rcd == 1]),
+        TRUE ~ sum(value, na.rm = TRUE)
+      ),
+      agency_h_inc = agency_end - agency_start,
+      agency_m_inc = round(agency_h_inc / agency_hist, 0),
+      agency_roi = agency_h_inc / agency_hist / agency_start
+    ) %>%
     ungroup() %>%
-    pivot_wider(names_from = period, values_from = value) %>%
+    pivot_wider(id_cols = -c(period, value),
+                names_from = period, values_from = value) %>%
     relocate(starts_with("agency_"), .after = last_col())
 
   # Site x Indicator x Sex x Age summary ----
 
-  # Results Trend
-  df_results <- df_disaggs %>%
-    filter(str_detect(indicator, "TX_.*")) %>%
-    pmap_dfr(~calc_increases(df_msd = df_sites, ind = .x, disag = .y))
+# Targets ----
+  df_est <- estimate_targets(df_msd = df_sites,
+                             roi = df_agency_roi,
+                             lst_assums = dfs_assums,
+                             targets = NULL,
+                             periods = hist_pds,
+                             indicator = "TX_CURR")
 
-  # Add assumptions to results
-  df_results <- df_results %>%
-    add_assumptions(assums = dfs_assums)
+  df_est %>% glimpse()
 
-  # Calculate Increases
-  df_results <- df_results %>%
-    update_increases(df_roi = df_agency_roi)
+  df_est %>% head(10)
 
-  # Write outputs
-  write_csv(df_results,
+  # Summary Tables ----
+  df_est %>%
+    summarise_targets(psnu, partner, indicator) %>%
+    filter(str_detect(partner, "FHI 360")) %>%
+    arrange(desc(h_increase)) %>%
+    gt::gt()
+
+  df_est %>%
+    summarise_targets(psnu, indicator) %>%
+    arrange(desc(h_increase)) %>%
+    gt::gt()
+
+  df_est %>%
+    summarise_targets(partner, indicator) %>%
+    arrange(desc(h_increase)) %>%
+    gt::gt()
+
+  # Validation Tables ----
+  df_est %>%
+    filter(indicator == "TX_CURR") %>%
+    select(psnu, sitename, indicator, age, sex, starts_with("FY")) %>%
+    head(5) %>%
+    gt::gt()
+
+  df_est %>%
+    select(psnu, sitename, indicator, age, sex,
+           starts_with("FY"), value_hist, value_start, value_end,
+           h_increase, m_increase) %>%
+    head(5) %>%
+    gt::gt()
+
+  df_est %>%
+    filter(indicator == "TX_CURR") %>%
+    select(psnu, sitename, indicator, age, sex,
+           starts_with("FY"), value_hist, value_start, value_end,
+           h_increase, m_increase) %>%
+    head(5) %>%
+    gt::gt()
+
+  df_est %>%
+    filter(indicator == "TX_CURR") %>%
+    select(psnu, sitename, indicator, age, sex,
+           value_hist, value_start, value_end,
+           h_increase, m_increase, starts_with("assum"), -assum_count) %>%
+    head(5) %>%
+    gt::gt()
+
+  df_est %>%
+    select(indicator, age, sex, h_increase, m_increase,
+           len_assum, assum_count, ind_roi, ends_with("increase")) %>%
+    #select(-global_increase) %>%
+    head(10) %>%
+    gt::gt()
+
+  df_est %>%
+    filter(indicator == "TX_CURR") %>%
+    select(indicator, age, sex,
+           ends_with("increase"),
+           total_result,
+           ends_with("target")) %>%
+    head(10) %>%
+    gt::gt()
+
+
+  # Write outputs ----
+  write_csv(df_est,
             file = "./Dataout/Simulation - FalicilityTargetProjecton.csv",
             na = "")
 

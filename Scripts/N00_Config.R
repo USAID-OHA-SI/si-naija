@@ -17,3 +17,10 @@
 
   country <- "Nigeria"
 
+  tx_inds <- c(
+    'TX_CURR',
+    'TX_NEW',
+    'TX_RTT',
+    'TX_ML',
+    'TX_NET_NEW')
+

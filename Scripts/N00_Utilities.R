@@ -16,6 +16,36 @@
 
 ## FUNCTIONS ----
 
+#' @title Get Orgunit Prioritization
+#'
+#'
+orgunit_prioritization <- function(.data,
+                                   org_type = "snu") {
+  # Org Prioritization column
+  col_prio <- case_when(
+      str_detect(org_type, "1$") ~ str_remove(org_type, "1$"),
+      TRUE ~ org_type
+    ) %>%
+    paste0("prioritization")
+
+  col_uid <- paste0(org_type, "uid")
+
+  cols <- c(col_uid, org_type, col_prio)
+
+  # Check if cols exist
+  if(!any(cols %in% names(.data))) {
+    print(paste(cols, collapse = ", "))
+    stop("INVALID INPUT - At least one of these columns does not exist in the data")
+  }
+
+  # Select applicable org columns and extract distinct rows
+  .data %>%
+    select(all_of(cols)) %>%
+    distinct() %>%
+    filter(across(.cols = all_of(org_type),
+                  .fns = ~ (!is.na(.x) & !str_detect(.x, "Data reported above"))))
+}
+
 #' @title Summarize Indicators Values
 #'
 #' @param df
@@ -502,6 +532,44 @@ tx_ml_bars <- function(.data, ...) {
 
   return(viz)
 }
+
+
+#' @title Clean modalities
+#'
+#'
+clean_modalities <- function(.data, colname = "modality") {
+
+  .data %>%
+    mutate(across(all_of(colname), ~ case_when(
+      . == "Inpat" ~ "Inpatient",
+      . == "HomeMod" ~ "Home-Based (Community)",
+      . == "Index" ~ "Index (Facility)",
+      . == "IndexMod" ~ "Index (Community)",
+      . == "MobileMod" ~ "Mobile (Community)",
+      . == "TBClinic" ~ "TB Clinic",
+      . == "OtherPITC" ~ "Other PITC",
+      . == "VCTMod" ~ "VCT (Community)",
+      . == "OtherMod" ~ "Other Community",
+      . == "Emergency Ward" ~ "Emergency",
+      TRUE ~ .
+    )))
+}
+
+
+#' @title Clean Index
+#'
+#'
+facility_type <- function(.data, colname = "disaggregate") {
+  .data %>%
+    mutate(
+      community_facility = case_when(
+        str_detect(disaggregate, "IndexMod/") ~ "Community",
+        str_detect(disaggregate, "Index/") ~ "Facility",
+        TRUE ~ NA_character_
+      )
+    )
+}
+
 
 #' @title Clean Mechs
 #'
