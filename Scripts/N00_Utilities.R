@@ -695,5 +695,23 @@ identify_pds <- function(df_msd,
 }
 
 
+#' @title States Prioritization
+#'
+#'
+get_prioritization <- function(df_nat, fy = 2021) {
 
+  df_nat %>%
+    filter(fiscal_year == fy,
+           operatingunit == "Nigeria",
+           snuprioritization != "Missing") %>%
+    select(psnuuid, psnu, snuprioritization) %>%
+    distinct() %>%
+    mutate(
+      flag = case_when(
+        psnu %in% c("Akwa Abom", "Rivers", "Delta", "Lagos", "Enugu", "Imo") ~ "Red",
+        psnu %in% c("Gombe", "Nasarawa", "Benue") ~ "Green",
+        psnu %in% c("Abia", "Taraba", "_Military Nigeria") ~ NA_character_,
+        TRUE ~ "Yellow"
+      ))
+}
 

@@ -302,10 +302,6 @@
     last() %>%
     vroom()
 
-  df_snu1_sum %>% glimpse()
-
-  #View(df_snu1_sum)
-
 
   # SNU1 MSD Summary
   df_psnu_sum <- list.files(
@@ -319,9 +315,6 @@
     dplyr::select(-psnuuid)
 
   df_psnu_sum %>% glimpse()
-
-  #View(df_psnu_sum)
-
 
 # VIZ ----------------------------------------------------
 
