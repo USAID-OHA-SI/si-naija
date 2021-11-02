@@ -115,9 +115,40 @@
 
   datim_resources(res_name = "Data Elements", dataset = TRUE)
 
+  datim_resources(res_name = "Data Sets", dataset = TRUE)
+
   datim_resources(res_name = "Category Option Combos", dataset = TRUE)
 
   datim_resources(res_name = "dataValueSets", dataset = TRUE)
+
+  # MER Data Sets - Results
+  mer_results <- c(
+    "MER Results: Facility Based",
+    "MER Results: Community Based",
+    "MER Results: Medical Store",
+    "MER Results: Community Based - DoD ONLY",
+    "MER Results: Facility Based - DoD ONLY",
+    "Host Country Results: Facility (USG)"
+  )
+
+  # MER Data Sets - Targets
+  mer_targets <- c(
+    "Host Country Targets: COP Prioritization SNU (USG)",
+    "MER Target Setting: PSNU (Facility and Community Combined)",
+    "MER Target Setting: PSNU (Facility and Community Combined) - DoD ONLY"
+  )
+
+  datim_resources(res_name = "Data Sets", dataset = TRUE) %>%
+    filter(name %in% mer_results) %>%
+    pull(href) %>%
+    #pull(id) %>%
+    map_dfr(function(.x){
+      data <- .x %>%
+        paste0("/?data.json&paging=false") %>%
+        datim_execute_query(username, password, flatten = TRUE) %>%
+        purrr::pluck("dataElements") %>%
+        tibble::as_tibble()
+    })
 
   #' @title Datim SQLViews
   #'
