@@ -104,6 +104,23 @@ sum_group <- function(df,
     summarise(across(all_of(sum_vars), sum, na.rm = TRUE), .groups = "drop")
 }
 
+
+#' @title Categorize age groups
+#'
+#'
+group_agesex <- function(.data) {
+
+  .data %>%
+    mutate(
+      category = case_when(
+        age == "<15" ~ "Children",
+        age == "15+" & sex == "Female" ~ "Adult Female",
+        age == "15+" & sex == "Male" ~ "Adult Male",
+        TRUE ~ NA_character_
+      )) %>%
+    relocate(category, .before = age)
+}
+
 #' @title Ellipsis
 #'
 test_ellipsis <- function(...) {
@@ -715,3 +732,51 @@ get_prioritization <- function(df_nat, fy = 2021) {
       ))
 }
 
+
+#' @title Round parts to total to 100%
+#'
+equal_parts <- function(x, percent = T) {
+
+  df_x <- tibble(value = x)
+
+  if (percent != TRUE | all(x < 1) == TRUE) {
+    df_x <- df_x %>%
+      mutate(value = value * 100)
+  }
+
+  df_x <- df_x %>%
+    mutate(flr = floor(value),
+           ext = value - flr,
+           rnd = round(value, 0),
+           idx = row_number())
+
+  t <- df_x %>% pull(rnd) %>% sum()
+  r <- 0
+  ad <- 1
+
+  if (t < 100) {
+    r <- 100 - t
+    ad <- 1
+  }
+  else if (t > 100) {
+    ad <- -1
+  }
+  else if (t == 100) {
+    ad <- 0
+  }
+
+  df_x <- df_x %>%
+    arrange(desc(ext)) %>%
+    mutate(
+      rnd = case_when(
+        row_number() <= r ~ rnd + ad,
+        TRUE ~ rnd
+      )
+    ) %>%
+    arrange(idx)
+
+  return(df_x$rnd)
+}
+
+#equal_parts(c(0.01044178, 0.56472255, 0.42483567))
+#equal_parts(c(1.044178, 56.472255, 42.483567))
