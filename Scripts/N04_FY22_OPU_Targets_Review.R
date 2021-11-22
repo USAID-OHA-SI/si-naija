@@ -1,10 +1,9 @@
 ##  PROJECT: SI Support for Nigeria
 ##  AUTHOR:  B.Kagniniwa | USAID
-##  PURPOSE: COP22 Prep
+##  PURPOSE: COP22 Prep - Review of Historical data
 ##  LICENCE: MIT
 ##  DATE:    2021-10-22
-##  UPDATED: 2021-10-25
-
+##  UPDATED: 2021-11-22
 
 # PACKAGES ----
 
@@ -61,19 +60,18 @@ library(gt)
   # PSNU x IM
   df_psnu <- file_msd_psnu %>% read_msd()
 
-  df_psnu %>% glimpse()
+  df_psnu <- df_psnu %>% clean_agency()
 
   curr_fy <- df_psnu %>% identifypd(pd_type = "year")
+  curr_pd <- df_psnu %>% identifypd(pd_type = "full")
 
   # Pop and HIV ----
   df_nat <- file_msd_nat %>% read_msd()
 
-  df_nat %>% glimpse()
-
   # COP21 Extimated NET_NEW
   df_net_new <- file_cop21_net_new %>%
     read_excel(sheet = "Scenario 2a+AT_April estimate-", skip = 1) %>%
-    clean_names() %>% #glimpse()
+    clean_names() %>%
     select(state, FY22_NET_NEW = fy_22_proposed_tx_net_new_target) %>%
     mutate(FY22_NET_NEW = round(FY22_NET_NEW, 0))
 
@@ -81,8 +79,6 @@ library(gt)
 # MUNGING ----
 
   # NAT SUBNAT
-  df_nat %>% distinct(indicator) %>% prinf()
-
   df_pops <- df_nat %>%
     filter(operatingunit == "Nigeria",
            indicator %in% c("POP_EST", "PLHIV"),
@@ -116,8 +112,6 @@ library(gt)
     arrange(flag, desc(FY22_PLHIV), psnu)
 
   # PSNU TX
-  df_psnu <- df_psnu %>% clean_agency()
-
   inds <- c("TX_CURR", "TX_NEW", "TX_NET_NEW")
   #inds <- c("TX_CURR", "TX_NEW")
 
@@ -146,8 +140,6 @@ library(gt)
     select(-fiscal_year) %>%
     pivot_wider(names_from = period, values_from = value)
 
-  #%>%filter(!is.na(FY22Targets))
-
   # Add states context ----
   df_targets <- df_cntry %>%
     left_join(df_targets, by = c("psnuuid", "psnu")) %>%
@@ -165,10 +157,12 @@ library(gt)
     relocate(fundingagency, .after = psnu) %>%
     bind_rows(df_targets) %>%
     filter(!(psnu == "Lagos" & fundingagency %in% c("USAID", "CDC"))) %>%
-    mutate(FY21Q4 = NA_integer_) %>%
+    #mutate(FY21Q4 = NA_integer_) %>%
     arrange(flag, desc(FY22_PLHIV), psnu)
 
-  #%>%filter(!is.na(FY22Targets))
+  # Clean up TX_NEW Targets
+  df_targets <- df_targets %>%
+    mutate(across(.cols = ends_with("Targets"), ~ ifelse(. == 0, NA, .)))
 
 
   # Extract NET NEW Results
@@ -217,7 +211,6 @@ library(gt)
     relocate(matches("FY21_POP|FY21_PL"), .before = FY21Q1) %>%
     relocate(matches("FY22_POP|FY22_PL"), .before = FY22Targets)
 
-  #%>%filter(!is.na(FY22Targets))
 
 
   df_targets_tx_curr <- df_targets_tx_curr %>%
