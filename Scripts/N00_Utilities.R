@@ -467,7 +467,7 @@ tx_ml_colors <- function(.data) {
 
 #' @title Plot TX_ML data
 #'
-tx_ml_bars <- function(.data, ...) {
+tx_ml_bars <- function(.data, lsize = 6, ...) {
 
   # Bar width
   w <- .96/2
@@ -511,11 +511,13 @@ tx_ml_bars <- function(.data, ...) {
     geom_text(aes(x = as.integer(indicator),
                   y = ymax,
                   label = comma(label_value)),
+              size = lsize,
               color = usaid_black,
               vjust = -1) +
     geom_text(aes(x = as.integer(indicator),
                   y = ymin,
                   label = label_changes),
+              size = lsize,
               color = usaid_black,
               vjust = 1.4) +
     geom_segment(data = df_nn,
@@ -539,13 +541,15 @@ tx_ml_bars <- function(.data, ...) {
               aes(x = as.integer(indicator) - 1,
                   y = ymin - value,
                   label = paste0("NN\n", comma(value))),
+              size = lsize,
               color = grey10k) +
     scale_fill_identity() +
     scale_x_discrete(limits = xlim_labels) +
     facet_wrap(vars(...)) +
     labs(x = "", y = "") +
     si_style_nolines() +
-    theme(axis.text.y = element_blank())
+    theme(axis.text.y = element_blank(),
+          axis.text.x = element_text(size = lsize * .pt, color = usaid_black))
 
   return(viz)
 }
@@ -715,11 +719,13 @@ identify_pds <- function(df_msd,
 #' @title States Prioritization
 #'
 #'
-get_prioritization <- function(df_nat, fy = 2021) {
+get_prioritization <- function(df_nat,
+                               fy = 2021,
+                               country = "Nigeria") {
 
   df_nat %>%
     filter(fiscal_year == fy,
-           operatingunit == "Nigeria",
+           countryname == country,
            snuprioritization != "Missing") %>%
     select(psnuuid, psnu, snuprioritization) %>%
     distinct() %>%

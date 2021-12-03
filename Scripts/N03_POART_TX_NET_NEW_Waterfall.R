@@ -36,11 +36,18 @@
   #   pattern = "Site_IM_.*_Nigeria") %>%
   #   gophr::read_msd()
 
+  # OU - Nigeria
   df_psnu <- glamr::return_latest(
       folderpath = dir_merdata,
-      pattern = "PSNU_IM_.*_Nigeria"
-    ) %>%
-    gophr::read_msd()
+      pattern = "PSNU_IM_.*_Nigeria") %>%
+    read_msd()
+
+  # Global
+  df_psnu <- glamr::return_latest(
+    folderpath = dir_merdata,
+    pattern = "PSNU_IM_FY19-22_.*_1.zip$") %>%
+    read_msd() %>%
+    filter(countryname == "Uganda")
 
 ## Fiscal Years ----
 
@@ -85,14 +92,56 @@
   df_tx_ml <- df_psnu %>%
     clean_agency() %>%
     tx_nocontact(rep_pd = curr_pd,
-                 unpack = NA,
+                 #unpack = NA,
                  #unpack = "ml",
-                 #unpack = "iit",
+                 unpack = "iit",
                  fundingagency)%>%
     filter(fundingagency == "USAID") %>%
     tx_ml_colors()
 
-  df_tx_ml %>% tx_ml_bars(fundingagency)
+  df_tx_ml <- df_psnu %>%
+    clean_agency() %>%
+    tx_nocontact(rep_pd = curr_pd,
+                 #unpack = NA,
+                 #unpack = "ml",
+                 unpack = "iit") %>%
+    tx_ml_colors()
+
+  df_tx_ml %>%
+    tx_ml_bars(lsize = 5) +
+    #scale_y_continuous(expand = c(.1, 0)) +
+    theme(text = element_text(face = "bold"),
+          plot.margin = unit(c(0,0,0,0), "in"),
+          strip.text = element_blank(),
+          #axis.text.x = element_blank()
+          ) #+
+    theme_transparent()
+
+  # Test - for ScoreCard
+  df_tx_ml_states <- df_psnu %>%
+    clean_agency() %>%
+    tx_nocontact(rep_pd = curr_pd,
+                 unpack = NA,
+                 #unpack = "ml",
+                 #unpack = "iit",
+                 fundingagency, psnu)%>%
+    filter(fundingagency == "USAID") %>%
+    tx_ml_colors()
+
+  viz_tx_ml <- df_tx_ml_states %>%
+    filter(psnu == "Akwa Ibom") %>%
+    tx_ml_bars(lsize = 10, psnu) +
+    scale_y_continuous(expand = c(.2, 0)) +
+    theme(text = element_text(face = "bold"),
+          plot.margin = unit(c(0,0,0,0), "in"),
+          strip.text = element_blank(),
+          axis.text.x = element_blank()) +
+    theme_transparent()
+
+  ggsave("./Graphics/ScoreCard_TX_ML_IkwaIbom.png",
+         plot = viz_tx_ml,
+         width = 3.5, height = 1.4, units = "in", dpi = 400,
+         bg = "transparent")
 
   # USAID Data
   df_usaid <- df_psnu %>%

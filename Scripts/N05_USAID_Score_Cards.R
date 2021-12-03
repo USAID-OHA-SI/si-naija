@@ -3,7 +3,7 @@
 ##  PURPOSE: USAID Quarterly Score Cards
 ##  LICENCE: MIT
 ##  DATE:    2021-10-22
-##  UPDATED: 2021-11-12
+##  UPDATED: 2021-11-30
 
 # PACKAGES ----
 
@@ -45,6 +45,9 @@
 
   fonts()
 
+  # load utilities
+  source("./Scripts/N00_Utilities.R")
+
 # GLOBAL ----
 
   # DIR - Global ----
@@ -52,6 +55,7 @@
   dir_geodata <- si_path("path_vector")
   dir_raster <- si_path("path_raster")
   dir_targets <- "../../PEPFAR/COUNTRIES/Nigeria/DataPack"
+  dir_sid <- "../../PEPFAR/COUNTRIES/Nigeria/SID"
 
   # DIR - Project ----
   dir_data <- "Data"
@@ -63,17 +67,22 @@
   # Files ----
   file_msd_sites <- return_latest(
     folderpath = dir_merdata,
-    pattern = "Site_IM.*_N.*"
+    pattern = "Site_IM_FY19-22_.*_N.*"
   )
 
   file_msd_psnu <- return_latest(
     folderpath = dir_merdata,
-    pattern = "PSNU_IM.*_N.*"
+    pattern = "PSNU_IM_FY19-22_.*_N.*"
   )
 
   file_msd_nat <- return_latest(
     folderpath = dir_merdata,
-    pattern = "NAT_SUBNAT.*"
+    pattern = "NAT_SUBNAT_FY15-22.*"
+  )
+
+  file_sid <- return_latest(
+    folderpath = dir_sid,
+    pattern = "Nigeria SID 2021_Expert.*"
   )
 
   file_shp <- return_latest(
@@ -96,7 +105,7 @@
   age_adults <- c("25-49", "50+")
 
   # Age/Sex Classification
-  cat_levels <- c("Children", "Adult Female", "Adult Male")
+  cat_levels <- c("Children", "Adult Female", "Adult Male", "All")
 
 # FUNCTIONS ----
 
@@ -139,6 +148,76 @@
     )
 
     df_pos_sel <- df_pos %>% filter(pos == loc)
+
+    viz_icon <- ggplot() +
+      geom_rect(aes(xmin = -.75, xmax = .75, ymin = -1, ymax = .75),
+                fill = NA, color = NA) +
+      geom_rect(aes(xmin = -1.25, xmax = 1.25, ymin = -1.25, ymax = 1),
+                fill = NA, color = NA) +
+      geom_text(aes(0, 0),
+                label = fontawesome(icon),
+                family = "fontawesome-webfont",
+                size = fsize,
+                color = fcolor)
+
+    # Label
+    if (!is.null(label)) {
+
+      viz_icon <- viz_icon +
+        geom_text(aes(df_pos_sel$x, df_pos_sel$y),
+                  label = label,
+                  size = lsize,
+                  color = fcolor,
+                  hjust = df_pos_sel$hjust,
+                  vjust = df_pos_sel$vjust)
+
+    }
+
+    #Theme
+    viz_icon <- viz_icon +
+      coord_equal(clip = "off") +
+      theme_void() +
+      theme(text = element_text(family = "Source Sans Pro")) +
+      theme_transparent()
+
+    if (!is.null(save_as)) {
+      ggsave(filename = save_as,
+             plot = viz_icon,
+             dpi = 320,
+             width = iwidth,
+             height = iheight,
+             bg = "transparent")
+    }
+
+    return(viz_icon)
+  }
+
+  #' @title Viz - fa-icons
+  #'
+  #'
+  fa_label <- function(icon = "fa-users",
+                       fsize = 100,
+                       fcolor = "red",
+                       label = "USERS",
+                       lsize = 20,
+                       lcolor = "#212721", # usaid_black
+                       loc = "bottom",
+                       save_as = NULL,
+                       iwidth = 1,
+                       iheight = 1) {
+
+    # Placement Guide
+    df_pos <- tibble(
+      pos   = c("top", "right", "bottom", "left"),
+      x     = c(0,     1.25,    0,    -1.25),
+      y     = c(1,     0,       -1.25,    -0),
+      hjust = c(0.5,   0,       0.5,      1),
+      vjust = c(0,     0.5,     1,        0.5)
+    )
+
+    df_pos_sel <- df_pos %>% filter(pos == loc)
+
+
 
     viz_icon <- ggplot() +
       geom_rect(aes(xmin = -.75, xmax = .75, ymin = -1, ymax = .75),
@@ -310,8 +389,9 @@
   tx_map <- function(spdf, spdf_states,
                      state = "Akwa Ibom",
                      ind = "TX_CURR",
-                     pd = "Q3",
-                     cat = NULL) {
+                     pd = "FY21Q4",
+                     cat = "All",
+                     lsize = 10) {
 
     # Filter out state boundaries
     st_bndry <- spdf_states %>%
@@ -358,7 +438,7 @@
               size = .5, color = grey10k) +
       geom_sf(data = st_bndry, fill = NA, size = 2, color = grey10k) +
       geom_sf(data = st_bndry, fill = NA, size = 1, color = grey50k) +
-      scale_fill_si(palette = "genoas", breaks = vbreaks, labels = vlabels)
+      scale_fill_si(palette = "scooters", breaks = vbreaks, labels = vlabels)
 
     # Facet if no Category
     if (is.null(cat)) {
@@ -368,14 +448,13 @@
     # Clean up the viz
     viz <- viz +
       labs(x = "", y = "") +
-      #si_style_map() +
       theme_void() +
       theme(legend.title = element_blank(),
             legend.position = 'bottom',
             legend.justification = 'center',
             legend.key.height = unit(1, 'line'),
-            legend.key.width = unit(2, 'line'),
-            legend.text = element_text(size = 10, color = usaid_black),
+            legend.key.width = unit(4, 'line'),
+            legend.text = element_text(size = lsize, color = usaid_black),
             panel.background = element_rect(fill = "transparent", color = NA),
             plot.background = element_rect(fill = "transparent", color = NA),
             panel.grid.major = element_blank(),
@@ -389,16 +468,21 @@
   #' @title State and Country HIV Summary
   #'
   #'
-  viz_hisstatus <- function(.data,
-                            pd = NULL,
-                            name = NULL) {
+  viz_hivstatus <- function(.data,
+                            pd = "FY21Q4",
+                            cat = "All",
+                            name = NULL,
+                            lsize = 30) {
 
     # Notifications
     print(paste0(pd, " - ", name))
 
-    # Filter and build dataset
+    # Filter and build data
     .data <- .data %>%
-      filter(orgunit == name, metric %in% c("hiv_burden", "art_sat", "vls")) %>%
+      select(-share) %>%
+      filter(psnu == name,
+             category == cat,
+             indicator %in% c("HIV_BURDEN", "ART_SAT", "VLS")) %>%
       mutate(
         value = round(value * 100),
         diff = case_when(
@@ -406,17 +490,21 @@
           TRUE ~ 0
         )
       ) %>%
-      pivot_longer(names_to = "coverage", values_to = "value", cols = c(value, diff)) %>%
-      mutate(coverage = factor(coverage, levels = c("value", "diff"), ordered = T),
-             metric = factor(metric,
-                             levels = c("hiv_burden", "art_sat", "vls"),
-                             labels = c("HIV", "ART", "VLS"),
-                             ordered = TRUE),
+      pivot_longer(names_to = "coverage",
+                   values_to = "value",
+                   cols = c(value, diff)) %>%
+      mutate(coverage = factor(coverage,
+                               levels = c("value", "diff"),
+                               ordered = T),
+             indicator = factor(indicator,
+                                levels = c("HIV_BURDEN", "ART_SAT", "VLS"),
+                                labels = c("HIV", "ART", "VLS"),
+                                ordered = TRUE),
              color = case_when(
                coverage == 'diff' ~ grey30k,
-               metric == 'HIV' & coverage == 'value' ~ burnt_sienna,
-               metric == 'ART' & coverage == 'value' ~ scooter,
-               metric == 'VLS' & coverage == 'value' ~ genoa
+               indicator == 'HIV' & coverage == 'value' ~ burnt_sienna,
+               indicator == 'ART' & coverage == 'value' ~ scooter,
+               indicator == 'VLS' & coverage == 'value' ~ genoa
              ),
              value_lbl = case_when(
                value > 100 ~ "*100%",
@@ -427,10 +515,10 @@
                TRUE ~ value
              ),
              label = case_when(
-               orgunit == "Country" & metric == 'HIV' & coverage == 'value' ~ paste0(paste0(value_lbl, " POPULATION")),
-               orgunit != "Country" & metric == 'HIV' & coverage == 'value' ~ paste0(paste0(value_lbl, " PLHIV")),
-               metric == 'ART' & coverage == 'value' ~ paste0(paste0(value_lbl, " on ART")),
-               metric == 'VLS' & coverage == 'value' ~ paste0(paste0(value_lbl, " VLS")),
+               psnu == "Country" & indicator == 'HIV' & coverage == 'value' ~ paste0(paste0(value_lbl, " POPULATION")),
+               psnu != "Country" & indicator == 'HIV' & coverage == 'value' ~ paste0(paste0(value_lbl, " PLHIV")),
+               indicator == 'ART' & coverage == 'value' ~ paste0(paste0(value_lbl, " on ART")),
+               indicator == 'VLS' & coverage == 'value' ~ paste0(paste0(value_lbl, " VLS")),
                TRUE ~ NA_character_
              ))
 
@@ -442,8 +530,8 @@
       geom_waffle(color = "white", size = .25, n_rows = 5) +
       geom_text(data = df_labels,
                 aes(x = 10, y = 3, label = label),
-                size = 40, color = "white", fontface = "bold") +
-      facet_wrap(~metric, ncol = 1, strip.position = "left") +
+                size = lsize, color = "white", fontface = "bold") +
+      facet_wrap(~indicator, ncol = 1, strip.position = "left") +
       scale_fill_identity() +
       coord_equal() +
       theme_void() +
@@ -459,9 +547,9 @@
     # Save output
     if (!is.null(pd) & !is.null(name)) {
       fname <- paste0("./Graphics/", pd,
-                         " - NIGERIA - ",
+                         " - ScoreCard_HIV_SummaryStatus_",
                          str_to_upper(name),
-                         " - HIV Summary Status.png")
+                         ".png")
 
       ggsave(filename = fname,
              plot = viz_sum,
@@ -475,20 +563,43 @@
 
 # DATA ----
 
+  # SID ----
+  df_sid <- file_sid %>%
+    read_excel(sheet = "Raw Element Data") %>%
+    clean_names()
+
+  df_sid <- df_sid %>%
+    rename(elements = nigeria) %>%
+    mutate(domains = ifelse(is.na(sid_2015),
+                           elements,
+                           NA_character_),
+           sid_2021 = NA) %>%
+    fill(domains) %>%
+    relocate(domains, .before = 1) %>%
+    filter(!is.na(sid_2015)) %>%
+    mutate(across(starts_with("sid"), str_replace, "N/A", "")) %>%
+    mutate(across(starts_with("sid"), as.numeric)) %>%
+    mutate(across(starts_with("sid"), comma, accuracy = 0.01))
+
+
+
   # SITE x IM ----
   df_sites <- file_msd_sites %>%
     read_msd() %>%
     clean_agency()
 
-  df_sites %>% distinct(fiscal_year)
+  df_sites %>%
+    distinct(fiscal_year) %>%
+    arrange(fiscal_year)
+
   df_sites %>% distinct(fundingagency)
 
-  # Periods
+  # Periods ----
   curr_fy <- df_sites %>% identifypd(pd_type = "year")
   curr_pd <- df_sites %>% identifypd(pd_type = "full")
-  hist_pds <- df_sites %>% identify_pds(pd_end = curr_pd, len = 4)
+  hist_pds <- df_sites %>% identify_pds(pd_end = curr_pd, len = 6)
 
-  # USAID FY21 States
+  # USAID FY21 States ----
   usaid_states <- df_sites %>%
     filter(fiscal_year == curr_fy,
            fundingagency == agency,
@@ -499,28 +610,9 @@
     pull()
 
   # SUBNAT: POP & PLHIV ----
-  df_nat <- file_msd_nat %>%
-    read_msd() %>%
-    filter(countryname == cntry)
+  df_nat <- file_msd_nat %>% read_msd()
 
-  df_nat %>% distinct(indicator) %>% prinf()
-
-  # Prioritization
-  df_prio <- get_prioritization(df_nat, 2021)
-
-  # Pops
-  #pops <- datim_pops(ou = cntry, fy = curr_fy, level = "psnu")
-
-  pops <- df_nat %>%
-    filter(indicator %in% c("POP_EST", "PLHIV"),
-           standardizeddisaggregate == "Age/Sex") %>%
-    group_by(fiscal_year, countryname, psnuuid, psnu, indicator, trendscoarse, sex) %>%
-    summarise(across(targets, sum, na.rm = T), .groups = "drop")
-
-  pops <- pops %>%
-    filter(fiscal_year == curr_fy & indicator == "POP_EST" |
-           fiscal_year == curr_fy -1 & indicator == "PLHIV") %>%
-    select(-fiscal_year)
+  #df_nat %>% distinct(indicator) %>% prinf()
 
   # GEO ----
   spdf_pepfar <- file_shp %>% read_sf()
@@ -536,34 +628,57 @@
 
 # MUNGE ----
 
-  # Prio + Pops
-  df_prio <- df_prio %>%
-    left_join(pops, by = c("psnuuid", "psnu"))
+  # Prio + Pops ----
+
+  # Prioritization
+  df_prio <- get_prioritization(df_nat, 2021, cntry)
+
+  # Pops
+
+  #pops <- datim_pops(ou = cntry, fy = curr_fy, level = "psnu")
+
+  pops <- df_nat %>%
+    filter(countryname == cntry,
+           indicator %in% c("POP_EST", "PLHIV"),
+           standardizeddisaggregate == "Age/Sex") %>%
+    rename(value = targets)
+
+  pops <- pops %>%
+    filter(fiscal_year == curr_fy & indicator == "POP_EST" |
+             fiscal_year == curr_fy -1 & indicator == "PLHIV") %>%
+    select(-fiscal_year) %>%
+    rename(age = trendscoarse) %>%
+    group_agesex() %>%
+    group_by(psnuuid, psnu, indicator, category) %>%
+    summarise(across(value, sum, na.rm = TRUE), .groups = "drop")
+
+  pops <- pops %>%
+    group_by(psnuuid, psnu, indicator) %>%
+    summarise(across(value, sum, na.rm = TRUE), .groups = "drop") %>%
+    mutate(category = "All") %>%
+    bind_rows(pops, .) %>%
+    arrange(psnu, indicator, category)
+
+  pops <- pops %>%
+    group_by(psnuuid, psnu, indicator) %>%
+    mutate(share = value / value[category == "All"]) %>%
+    ungroup() %>%
+    arrange(psnu, indicator, category)
+
+  # df_prio <- df_prio %>%
+  #   left_join(pops, by = c("psnuuid", "psnu"))
 
   # POP/PLHIV Stats ----
   df_pops <- pops %>%
-    rename(age = trendscoarse) %>%
-    group_agesex() %>%
-    arrange(psnu, desc(indicator)) %>%
-    pivot_wider(names_from = indicator, values_from = targets) %>%
-    clean_names() %>%
     group_by(psnuuid, psnu, category) %>%
     summarise(
-      plhiv = sum(plhiv, na.rm = TRUE),
-      pop_est = sum(pop_est, na.rm = TRUE),
-      hiv_prev = plhiv / pop_est,
+      value = value[indicator == "PLHIV"] / value[indicator == "POP_EST"],
+      share = NA_real_,
       .groups = "drop"
     ) %>%
-    ungroup() %>%
-    group_by(psnuuid, psnu) %>%
-    mutate(
-      prp_plhiv = plhiv / sum(plhiv, na.rm = TRUE),
-      prp_pop_est = pop_est / sum(pop_est, na.rm = TRUE),
-      ttl_plhiv = sum(plhiv, na.rm = TRUE),
-      ttl_pop_est = sum(pop_est, na.rm = TRUE),
-      ttt_hiv_prev = ttl_plhiv / ttl_pop_est
-    ) %>%
-    ungroup()
+    mutate(indicator = "HIV_PREV") %>%
+    bind_rows(pops, .)
+
 
   # KNOWN Status: NOT GOOD ----
   df_hiv_status <- df_nat %>%
@@ -590,169 +705,224 @@
            indicator %in% c("HTS_TST", "HTS_TST_POS")) %>%
     distinct(standardizeddisaggregate)
 
-  df_hts <- df_sites %>%
-    filter(fiscal_year == curr_fy,
-           fundingagency == agency,
+  df_hts_all <- df_sites %>%
+    filter(fundingagency == agency,
            indicator %in% c("HTS_TST", "HTS_TST_POS"),
            standardizeddisaggregate == "Modality/Age/Sex/Result")
 
-  df_hts_states <- df_hts %>%
+  df_hts_all <- df_hts_all %>%
     rename(age = trendscoarse) %>%
     group_agesex() %>%
-    group_by(psnuuid, psnu, indicator, category) %>%
-    summarise(across(cumulative, sum, na.rm = TRUE), .groups = "drop") %>%
-    ungroup() %>%
-    pivot_wider(names_from = indicator, values_from = cumulative) %>%
-    clean_names() %>%
-    mutate(hts_yield = hts_tst_pos / hts_tst) %>%
-    group_by(psnuuid, psnu) %>%
+    reshape_msd() %>%
+    filter(period_type == "results") %>%
+    group_by(period, psnuuid, psnu, indicator, category) %>%
+    summarise(across(value, sum, na.rm = TRUE), .groups = "drop")
+
+  df_hts_all <- df_hts_all %>%
+    group_by(period, psnuuid, psnu, indicator) %>%
+    summarise(across(value, sum, na.rm = TRUE), .groups = "drop") %>%
+    mutate(category = "All") %>%
+    bind_rows(df_hts_all, .) %>%
+    arrange(period, psnu, indicator, category)
+
+  # Calcualate Yield
+  df_hts_all <- df_hts_all %>%
+    group_by(period, psnuuid, psnu, category) %>%
+    summarise(value = value[indicator == "HTS_TST_POS"] / value[indicator == "HTS_TST"],
+              .groups = "drop") %>%
+    mutate(indicator = "HTS_YIELD") %>%
+    bind_rows(df_hts_all, .) %>%
+    group_by(period, psnuuid, psnu, indicator) %>%
     mutate(
-      ttl_hts_tst = sum(hts_tst, na.rm = T),
-      prp_hts_tst = hts_tst / ttl_hts_tst,
-      ttl_hts_tst_pos = sum(hts_tst_pos, na.rm = T),
-      prp_hts_tst_pos = hts_tst_pos / ttl_hts_tst_pos,
-      ttl_hts_yield = ttl_hts_tst_pos / ttl_hts_tst
+      share = case_when(
+        indicator != "HTS_YIELD" ~ value / value[category == 'All'],
+        TRUE ~ NA_real_
+      )
     ) %>%
     ungroup() %>%
-    mutate(category = factor(category, levels = cat_levels, ordered = T)) %>%
-    arrange(category)
+    arrange(period, psnu, indicator, category)
+
+  # HTS for Current PD
+  df_hts <- df_hts_all %>%
+    filter(period == curr_pd) %>%
+    select(-period)
 
   # TX ----
-  df_tx <- df_sites %>%
-    filter(fiscal_year == curr_fy,
-           fundingagency == agency,
+  df_tx_all <- df_sites %>%
+    filter(fundingagency == agency,
            indicator %in% c("TX_RTT", "TX_NEW", "TX_ML",
                             "TX_NET_NEW", "TX_CURR"),
            standardizeddisaggregate %in% c("Age/Sex/HIVStatus",
                                          "Age/Sex/ARTNoContactReason/HIVStatus")) %>%
     rename(age = trendscoarse) %>%
     group_agesex() %>%
-    group_by(psnuuid, psnu, indicator, category) %>%
-    summarise(across(c(targets, starts_with("qtr"), cumulative),
-                     sum, na.rm = TRUE), .groups = "drop") %>%
-    mutate(achievement = cumulative / targets) %>%
-    group_by(psnuuid, psnu, indicator) %>%
-    mutate(ttl_targets = sum(targets),
-           ttl_results = sum(cumulative),
-           ttl_achievement = ttl_results / ttl_targets)
+    reshape_msd() %>%
+    filter(period_type == "results") %>%
+    group_by(period, psnuuid, psnu, indicator, category) %>%
+    summarise(across(value, sum, na.rm = TRUE), .groups = "drop")
 
-  df_tx_lga <- df_sites %>%
-    filter(fiscal_year == curr_fy,
-           fundingagency != "DEDUP",
+  df_tx_all <- df_tx_all %>%
+    group_by(period, psnuuid, psnu, indicator) %>%
+    summarise(across(value, sum, na.rm = TRUE), .groups = "drop") %>%
+    mutate(category = "All") %>%
+    relocate(category, .after = indicator) %>%
+    bind_rows(df_tx_all) %>%
+    arrange(period, psnu, indicator, category)
+
+  df_tx <- df_tx_all %>%
+    filter(period == curr_pd) %>%
+    select(-period) %>%
+    group_by(psnuuid, psnu, indicator) %>%
+    mutate(share = value / value[category == "All"]) %>%
+    ungroup()
+
+  # TX_CURR HISTORY by LGA ----
+  df_tx_lga_all <- df_sites %>%
+    filter(fundingagency != "DEDUP",
            community != "Data reported above Community Level",
-           indicator %in% c("TX_NEW", "TX_CURR"),
+           indicator == "TX_CURR",
            standardizeddisaggregate %in% c("Age/Sex/HIVStatus")) %>%
     rename(age = trendscoarse) %>%
     group_agesex() %>%
     clean_column(colname = "community") %>%
-    group_by(psnuuid, psnu, communityuid, community, indicator, category) %>%
-    summarise(across(starts_with("qtr"), sum, na.rm = TRUE), .groups = "drop")
+    reshape_msd() %>%
+    filter(period_type == "results") %>%
+    group_by(period, psnuuid, psnu, communityuid, community, indicator, category) %>%
+    summarise(across(value, sum, na.rm = TRUE), .groups = "drop")
 
-  df_tx_lga <- df_tx_lga %>%
-    group_by(psnuuid, psnu, communityuid, community, indicator) %>%
-    summarise(across(starts_with("qtr"), sum, na.rm = TRUE), .groups = "drop") %>%
-    mutate(category = "Community") %>%
-    bind_rows(df_tx_lga, .) %>%
-    pivot_longer(names_to = "period", values_to = "value",
-                 cols = starts_with("qtr")) %>%
-    mutate(
-      period = case_when(
-        str_detect(period, "qtr") ~ str_replace(period, "qtr", "Q"),
-        TRUE ~ str_to_sentence(period)
-      )
-    )
+  df_tx_lga_all <- df_tx_lga_all %>%
+    group_by(period, psnuuid, psnu, communityuid, community, indicator) %>%
+    summarise(across(value, sum, na.rm = TRUE), .groups = "drop") %>%
+    mutate(category = "All") %>%
+    relocate(category, .after = indicator) %>%
+    bind_rows(df_tx_lga_all) %>%
+    arrange(psnu, community, psnu, indicator, category)
 
   # VLC/S ----
-  df_vl <- df_sites %>%
+  df_vl_all <- df_sites %>%
     filter(
-      fiscal_year == curr_fy,
       fundingagency == agency,
       community != "Data reported above Community Level",
-      indicator %in% c("TX_PVLS", "TX_CURR"), #%>% distinct(indicator, standardizeddisaggregate)
+      indicator %in% c("TX_PVLS", "TX_CURR"),
       standardizeddisaggregate %in% c("Age/Sex/HIVStatus", "Age/Sex/Indication/HIVStatus")
     ) %>%
     clean_indicator() %>%
     rename(age = trendscoarse) %>%
     group_agesex() %>%
-    group_by(fiscal_year,
+    reshape_msd() %>%
+    filter(period_type == "results") %>%
+    group_by(period,
              psnuuid,
              psnu,
              indicator,
              category) %>%
-    summarise(across(starts_with("qtr"), sum, na.rm = TRUE)) %>%
-    ungroup() %>%
-    reshape_msd(clean = TRUE) %>%
-    dplyr::select(-period_type) %>%
-    spread(indicator, value) %>%
+    summarise(across(value, sum, na.rm = TRUE), .groups = "drop") %>%
+    ungroup()
+
+  # Add "All" Category
+  df_vl_all <- df_vl_all %>%
+    group_by(period, psnuuid, psnu, indicator) %>%
+    summarise(across(value, sum, na.rm = TRUE), .groups = "drop") %>%
+    mutate(category = "All") %>%
+    relocate(category, .after = psnu) %>%
+    bind_rows(df_vl_all) %>%
+    arrange(period, psnuuid, psnu, category)
+
+  # TX_CURR LAG2
+  df_vl_all <- df_vl_all %>%
+    filter(indicator == "TX_CURR") %>%
     group_by(psnuuid, psnu, category) %>%
-    mutate(TX_CURR_LAG2 = lag(TX_CURR, 2, order_by = period),
-           VLC = TX_PVLS_D / TX_CURR_LAG2) %>%
+    mutate(value = lag(value, order_by = period)) %>%
     ungroup() %>%
-    relocate(TX_CURR_LAG2, .after = TX_CURR) %>%
+    mutate(indicator = "TX_CURR_LAG2") %>%
+    bind_rows(df_vl_all) %>%
+    arrange(period, psnu, category, indicator)
+
+  # VLC
+  df_vl_all <- df_vl_all %>%
+    group_by(period, psnuuid, psnu, category) %>%
+    summarise(value = value[indicator == "TX_PVLS_D"] / value[indicator == "TX_CURR_LAG2"],
+              indicator = "VLC",
+              .groups = "drop") %>%
+    bind_rows(df_vl_all, .) %>%
+    arrange(period, psnu, category, indicator)
+
+  # VLS
+  df_vl_all <- df_vl_all %>%
+    group_by(period, psnuuid, psnu, category) %>%
+    summarise(value = value[indicator == "TX_PVLS"] / value[indicator == "TX_PVLS_D"],
+              indicator = "VLS",
+              .groups = "drop") %>%
+    ungroup() %>%
+    bind_rows(df_vl_all, .) %>%
+    arrange(period, psnu, category, indicator)
+
+  # VL for Current Period
+  df_vl <- df_vl_all %>%
     filter(period == curr_pd) %>%
     select(-period) %>%
-    mutate(VLS = TX_PVLS / TX_PVLS_D)
-
-  df_vl_all <- df_sites %>%
-    filter(
-      fiscal_year == curr_fy,
-      indicator %in% c("TX_PVLS", "TX_CURR"),
-      standardizeddisaggregate %in% c("Age/Sex/HIVStatus", "Age/Sex/Indication/HIVStatus")
-    ) %>%
-    clean_indicator() %>%
-    group_by(fiscal_year, indicator) %>%
-    summarise(across(starts_with("qtr"), sum, na.rm = TRUE)) %>%
-    ungroup() %>%
-    reshape_msd(clean = TRUE) %>%
-    dplyr::select(-period_type) %>%
-    pivot_wider(names_from = indicator, values_from = value) %>%
-    mutate(TX_CURR_LAG2 = lag(TX_CURR, 2, order_by = period),
-           VLC = TX_PVLS_D / TX_CURR_LAG2) %>%
-    relocate(TX_CURR_LAG2, .after = TX_CURR) %>%
-    filter(period == curr_pd) %>%
-    select(-period) %>%
-    mutate(VLS = TX_PVLS / TX_PVLS_D,
-           orgunit = "Country") %>%
-    relocate(orgunit, .before = 1)
-
+    mutate(category = factor(category, levels = cat_levels))
 
   # POP, TX & VLC/S ----
   df_all_states <- df_pops %>%
-    left_join(df_vl,
-              by = c("orgunituid" = "psnuuid",
-                     "orgunit" = "psnu", "category")) %>%
-    clean_names()
+    bind_rows(df_hts, df_tx %>% filter(indicator != "TX_CURR"), df_vl) %>%
+    mutate(category = factor(category, levels = cat_levels, ordered = TRUE))
 
-  # State Levels
-  df_all_states_viz <- df_all_states %>%
-    group_by(orgunituid, orgunit) %>%
-    summarise(across(c(pop_est, plhiv, tx_curr, tx_curr_lag2, tx_pvls, tx_pvls_d),
-                     sum, na.rm = T), .groups = "drop") %>%
-    mutate(hiv_prev = plhiv / pop_est,
-           hiv_burden = plhiv / sum(plhiv, na.rm = T),
-           art_sat = tx_curr / plhiv,
-           vlc = tx_pvls_d / tx_curr_lag2,
-           vls = tx_pvls / tx_pvls_d) %>%
-    filter(tx_curr > 0) %>%
-    pivot_longer(names_to = "metric",
-                 values_to = "value",
-                 cols = -c(orgunituid, orgunit))
+  df_all_states %>% glimpse()
 
-  # National Level -> Add other agencies
-  df_all_nat_viz <- df_pops %>%
-    summarise(across(c(pop_est, plhiv), sum, na.rm = T)) %>%
-    mutate(orgunit = "Country") %>%
-    relocate(orgunit, .before = 1) %>%
-    left_join(df_vl_all, by = "orgunit") %>%
-    clean_names() %>%
-    mutate(hiv_prev = plhiv / pop_est,
-           hiv_burden = plhiv / pop_est,
-           art_sat = tx_curr / plhiv,
-           vlc = tx_pvls_d / tx_curr_lag2,
-           vls = tx_pvls / tx_pvls_d) %>%
-    pivot_longer(names_to = "metric",
+  df_all_states %>% distinct(indicator)
+
+  df_all_states %>%
+    distinct(indicator, category) %>%
+    arrange(indicator, category)
+
+  # Add ART Saturation
+  df_all_states <- df_all_states %>%
+    filter(indicator %in% c("PLHIV", "TX_CURR")) %>%
+    group_by(psnuuid, psnu, category) %>%
+    summarise(
+      value = value[indicator == "TX_CURR"] / value[indicator == "PLHIV"],
+      share = NA_real_,
+      .groups = "drop"
+    ) %>%
+    mutate(indicator = "ART_SAT",
+           value = if_else(value > 1, 1, value)) %>%
+    bind_rows(df_all_states, .)
+
+  # Add HIV Burden
+  df_all_states <- df_all_states %>%
+    filter(indicator == "PLHIV") %>%
+    group_by(category) %>%
+    mutate(
+      value = value / sum(value, na.rm = TRUE),
+      share = NA_real_
+    ) %>%
+    ungroup() %>%
+    mutate(indicator = "HIV_BURDEN") %>%
+    bind_rows(df_all_states, .)
+
+  # National HIV Burden, Saturation & VLS
+  df_all_nat <- df_all_states %>%
+    select(-share) %>%
+    filter(indicator %in% c("POP_EST", "PLHIV", "TX_CURR",
+                            "TX_PVLS", "TX_PVLS_D"))
+
+  df_all_nat %>%
+    group_by(category) %>%
+    summarise(
+      hiv_prev = sum(value[indicator == "PLHIV"]) / sum(value[indicator == "POP_EST"]),
+      art_sat = sum(value[indicator == "TX_CURR"]) / sum(value[indicator == "PLHIV"]),
+      vls = sum(value[indicator == "TX_PVLS"]) / sum(value[indicator == "TX_PVLS_D"])) %>%
+    ungroup() %>%
+    mutate(psnu = "country") %>%
+    relocate(psnu, .before = 1) %>%
+    pivot_longer(names_to = "indicator",
                  values_to = "value",
-                 cols = -orgunit)
+                 cols = c(hiv_prev, art_sat, vls)) %>%
+    mutate(indicator = str_to_upper(indicator))
+
+
+
 
 
 
@@ -770,17 +940,15 @@
   spdf_adm2 %>% gview()
 
   spdf_lga_tx <- spdf_adm2 %>%
-    left_join(df_tx_lga, by = c("uid" = "communityuid"))
-
-  spdf_lga_tx %>% dview()
-
-  tx_curr_map <- tx_map(spdf = spdf_lga_tx,
-                        spdf_states = spdf_adm1,
-                        cat = NULL)
+    left_join(df_tx_lga_all %>%
+                filter(psnu == "Akwa Ibom",
+                       period == curr_pd),
+              by = c("uid" = "communityuid")) %>%
+    filter(!is.na(value))
 
   tx_curr_map <- tx_map(spdf = spdf_lga_tx,
                         spdf_states = spdf_adm1,
-                        cat = "Community")
+                        cat = "Children")
 
   tx_curr_map <- tx_map(spdf = spdf_lga_tx,
                         spdf_states = spdf_adm1,
@@ -790,10 +958,18 @@
                         spdf_states = spdf_adm1,
                         cat = "Adult Male")
 
-  ggsave(paste0(dir_graphics, "/Nigeria - ", sname, " - FY21Q3 LGA TX_CURR Distribution.png"),
+  tx_curr_map <- tx_map(spdf = spdf_lga_tx,
+                        spdf_states = spdf_adm1,
+                        cat = "All",
+                        lsize = 22)
+
+  ggsave("./Graphics/ScoreCard_TX_CURR_Distribution_IkwaIbom.png",
          plot = tx_curr_map,
-         width = 4, height = 6,
+         width = 5, height = 6,
+         units = "in", dpi = 320,
          bg = "transparent")
+
+
 
   usaid_states %>%
     map(~tx_map(spdf = spdf_lga_tx,
@@ -1123,11 +1299,12 @@
   viz <- (viz_child + viz_adfem + viz_admale)
 
 
-  # State Summary ----
+  # State HIV Summary ----
 
-  viz_hisstatus(.data = df_all_states_viz,
+  viz_hivstatus(.data = df_all_states,
                 pd = curr_pd,
-                name = "Cross River")
+                name = "Akwa Ibom",
+                lsize = 40)
 
   df_all_states_viz %>%
     distinct(orgunit) %>%
@@ -1140,7 +1317,197 @@
                                  pd = curr_pd,
                                  name = "Country")
 
-#
+  # TX History ----
+  viz_tx_trend <- df_tx_all %>%
+    filter(psnu == "Akwa Ibom",
+           category == "All",
+           indicator == "TX_CURR",
+           period %in% hist_pds) %>%
+    mutate(period = str_replace(period, "Q", " Q")) %>%
+    ggplot(aes(x = period, y = value)) +
+    geom_col(fill = scooter) +
+    geom_text(aes(label = comma(value)),
+              vjust = 2, color = "white",
+              fontface = "bold", size = 10) +
+    labs(x = "", y = "") +
+    si_style_nolines() +
+    theme(axis.text.y = element_blank(),
+          axis.text.x = element_text(size = 22, face = "bold", color = usaid_black),
+          plot.margin = unit(c(0,0,0,0), "in")) +
+    theme_transparent()
+
+  ggsave("./Graphics/ScoreCard_TX_Trend_IkwaIbom.png",
+         plot = viz_tx_trend,
+         width = 4, height = 2,
+         units = "in", dpi = 320,
+         bg = "transparent")
+
+
+  # SID Status ----
+  df_sid %>%
+    group_by(domains) %>% gt()
+
+  df_sid %>%
+    group_by(domains) %>%
+    gt() %>%
+    cols_label(
+      elements = "ELEMENTS",
+      sid_2015 = "2015",
+      sid_2017 = "2017",
+      sid_2019 = "2019",
+      sid_2021 = "2021"
+    ) %>%
+    fmt_missing(
+      columns = tidyselect::everything(),
+      missing_text = "N/A"
+    ) %>%
+    cols_width(1:2 ~ px(700), 3:6 ~ px(300)) %>%
+    # domains / elements
+    tab_style(
+      style = list(
+        cell_text(color = usaid_black, weight = "bold", size = 20)
+      ),
+      locations = cells_row_groups()
+    ) %>%
+    tab_style(
+      style = list(
+        cell_text(color = usaid_black, indent = px(20))
+      ),
+      locations = cells_body(
+        columns = elements,
+        rows = everything()
+      )
+    ) %>%
+    # Font size
+    tab_style(
+      style = list(
+        cell_text(size = "x-large")
+      ),
+      locations = cells_body(
+        columns = everything()
+      )
+    ) %>%
+    # 2015
+    tab_style(
+      style = list(
+        cell_fill(color = usaid_red),
+        cell_text(color = "white")
+      ),
+      locations = cells_body(
+        columns = sid_2015,
+        rows = sid_2015 < 3.50
+      )
+    ) %>%
+    tab_style(
+      style = list(
+        cell_fill(color = golden_sand),
+        cell_text(color = "white")),
+      locations = cells_body(
+        columns = sid_2015,
+        rows = sid_2015 >= 3.50 & sid_2015 < 6.99
+      )
+    ) %>%
+    tab_style(
+      style = list(
+        cell_fill(color = genoa_light),
+        cell_text(color = "white")),
+      locations = cells_body(
+        columns = sid_2015,
+        rows = sid_2015 >= 7.00 & sid_2015 < 8.49
+      )
+    ) %>%
+    tab_style(
+      style = list(
+        cell_fill(color = genoa),
+        cell_text(color = "white")),
+      locations = cells_body(
+        columns = sid_2015,
+        rows = sid_2015 >= 8.50 & sid_2015 <= 10
+      )
+    ) %>%
+    # 2017
+    tab_style(
+      style = list(
+        cell_fill(color = usaid_red),
+        cell_text(color = "white")),
+      locations = cells_body(
+        columns = sid_2017,
+        rows = sid_2017 < 3.50
+      )
+    ) %>%
+    tab_style(
+      style = list(
+        cell_fill(color = golden_sand),
+        cell_text(color = "white")),
+      locations = cells_body(
+        columns = sid_2017,
+        rows = sid_2017 >= 3.50 & sid_2017 < 6.99
+      )
+    ) %>%
+    tab_style(
+      style = list(
+        cell_fill(color = genoa_light),
+        cell_text(color = "white")),
+      locations = cells_body(
+        columns = sid_2017,
+        rows = sid_2017 >= 7.00 & sid_2017 < 8.49
+      )
+    ) %>%
+    tab_style(
+      style = list(
+        cell_fill(color = genoa),
+        cell_text(color = "white")),
+      locations = cells_body(
+        columns = sid_2017,
+        rows = sid_2017 >= 8.50 & sid_2017 <= 10
+      )
+    ) %>%
+    # 2019
+    tab_style(
+      style = list(
+        cell_fill(color = usaid_red),
+        cell_text(color = "white")),
+      locations = cells_body(
+        columns = sid_2019,
+        rows = sid_2019 < 3.50
+      )
+    ) %>%
+    tab_style(
+      style = list(
+        cell_fill(color = golden_sand),
+        cell_text(color = "white")),
+      locations = cells_body(
+        columns = sid_2019,
+        rows = sid_2019 >= 3.50 & sid_2019 < 6.99
+      )
+    ) %>%
+    tab_style(
+      style = list(
+        cell_fill(color = genoa_light),
+        cell_text(color = "white")),
+      locations = cells_body(
+        columns = sid_2019,
+        rows = sid_2019 >= 7.00 & sid_2019 < 8.49
+      )
+    ) %>%
+    tab_style(
+      style = list(
+        cell_fill(color = genoa),
+        cell_text(color = "white")),
+      locations = cells_body(
+        columns = sid_2019,
+        rows = sid_2019 >= 8.00 & sid_2019 <= 10.0
+      )
+    ) %>%
+    # 2021
+    tab_style(
+      style = list(
+        cell_fill(color = grey30k),
+        cell_text(color = "white")),
+      locations = cells_body(
+        columns = sid_2021
+      )
+    )
 
 
 
@@ -1169,42 +1536,6 @@
 
 
 
-
-
-
-  # waffle(
-  #   c('Children=' = round(w_hts_tst[1] * 100, 0),
-  #     'Adult Female=' = round(w_hts_tst[2], 0),
-  #     'Adult Male=' = round(w_hts_tst[3])),
-  #   rows = 10, colors = c("red", "green", "grey50"),
-  #   title = 'Responses', legend_pos="bottom"
-  # )
-  #
-  # waffle(
-  #   c('Yes=70%' = 70, 'No=30%' = 30),
-  #   rows = 10, colors = c("red", "grey50"),
-  #   title = 'Responses', legend_pos="bottom"
-  # )
-  #
-  # waffle(
-  #   c('Children=70%' = df_hts_state$hts_tst_pos[df_hts_state$category == "Children"],
-  #     'Adult Female=30%' = df_hts_state$hts_tst_pos[df_hts_state$category == "Adult Female"],
-  #     'Adult Male=30%' = df_hts_state$hts_tst_pos[df_hts_state$category == "Adult Male"]),
-  #   rows = 10,
-  #   colors = c("#FD6F6F", "#93FB98", "red"),
-  #   title = 'Responses', legend_pos="bottom"
-  # )
-  #
-  # poss <- c(children = df_hts_state$hts_tst_pos[df_hts_state$category == "Children"],
-  #   `Adult Female` = df_hts_state$hts_tst_pos[df_hts_state$category == "Adult Female"],
-  #   `Adult Male` = df_hts_state$hts_tst_pos[df_hts_state$category == "Adult Male"])
-  #
-  # poss <- c(children = 55,
-  #           `Adult Female` = 30,
-  #           `Adult Male` = 20)
-  #
-  # waffle(poss, rows=10, size = 1,
-  #        glyph_font = "child")
 
 
 
