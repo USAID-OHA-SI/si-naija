@@ -380,8 +380,8 @@ trend_art_saturation <- function(df) {
   df_psnu_all <- file_psnu_im %>% read_msd()
 
   # Rep. Periods
-  curr_pd <- df_psnu %>% identifypd(pd_type = "full")
-  curr_fy <- df_psnu %>% identifypd(pd_type = "year")
+  curr_pd <- df_psnu_all %>% identifypd(pd_type = "full")
+  curr_fy <- df_psnu_all %>% identifypd(pd_type = "year")
 
   # Sub-Nat
   df_nat <- file_natsub %>%
@@ -411,7 +411,8 @@ trend_art_saturation <- function(df) {
 
 # MUNGE ----
 
-  # Custom Request
+  # Custom KP Request ----
+
   kp_inds <- c("KP_PREV", "HTS_TST", "HTS_TST_POS", "TX_CURR", "PrEP_CURR")
 
   df_psnu_all %>%
@@ -503,15 +504,15 @@ trend_art_saturation <- function(df) {
         is.na(ART_SAT) & psnu == "_Military Nigeria" ~ "Military",
         TRUE ~ benchmark),
       fill_color = case_when(
-        benchmark == "Above" ~ genoa,
-        benchmark == "Below" ~ genoa_light,
-        benchmark == "Newly Added" ~ genoa_light,
+        benchmark == "Above" ~ scooter,
+        benchmark == "Below" ~ scooter_light,
+        benchmark == "Newly Added" ~ grey40k,
         benchmark == "GF States" ~ grey10k
       ),
       text_color = case_when(
         benchmark == "Above" ~ grey10k,
         benchmark == "Below" ~ usaid_black,
-        benchmark == "Newly Added" ~ usaid_black,
+        benchmark == "Newly Added" ~ grey10k,
         benchmark == "GF States" ~ usaid_black
       ))
 
@@ -527,9 +528,6 @@ trend_art_saturation <- function(df) {
   spdf_art <- admin1 %>%
     left_join(df_art, by = c("uid" = "psnuuid"))
 
-  spdf_art %>% gview()
-
-
 
 # VIZ ----
 
@@ -539,8 +537,6 @@ trend_art_saturation <- function(df) {
                          adm1 = admin1,
                          mask = TRUE,
                          terr = terr)
-
-  basemap
 
   # Produce thematic map
   art_map <- basemap +
@@ -558,7 +554,9 @@ trend_art_saturation <- function(df) {
             size = .3) +
     geom_sf_text(data = spdf_art,
                  aes(label = paste0(str_replace(psnu, " ", "\n"),
-                                    "\n", percent(ART_SAT, 1)),
+                                    "\n",
+                                    ifelse(is.na(ART_SAT), "TBC",
+                                           percent(ART_SAT, 1))),
                      color = text_color),
                  size = 2, fontface = "bold") +
     scale_fill_identity() +
