@@ -388,6 +388,14 @@ trend_art_saturation <- function(df) {
     read_msd() %>%
     filter(countryname == cntry)
 
+  # PCO Data
+  df_pco <- list.files(
+    path = dir_data,
+    pattern = "^SNU Level Analysis_Iframe",
+    full.names = TRUE) %>%
+    read_excel(sheet = 1) %>%
+    clean_names()
+
   # SPATIAL DATA
   terr <- gisr::get_raster(path = dir_terr)
 
@@ -471,6 +479,14 @@ trend_art_saturation <- function(df) {
   df_nat %>% glimpse()
   df_nat %>% distinct(indicator)
 
+  df_nat_all <- df_nat %>%
+    filter(indicator == "PLHIV",
+           standardizeddisaggregate == "Total Numerator",
+           !is.na(snu1)) %>%
+    select(fiscal_year, psnuuid, psnu, indicator, targets) %>%
+    rename(value = targets, period = fiscal_year) %>%
+    pivot_wider(names_from = period, values_from = value)
+
   df_nat <- df_nat %>%
     filter(indicator == "PLHIV",
            standardizeddisaggregate == "Total Numerator",
@@ -504,17 +520,52 @@ trend_art_saturation <- function(df) {
         is.na(ART_SAT) & psnu == "_Military Nigeria" ~ "Military",
         TRUE ~ benchmark),
       fill_color = case_when(
-        benchmark == "Above" ~ scooter,
-        benchmark == "Below" ~ scooter_light,
+        benchmark == "Above" ~ genoa,
+        benchmark == "Below" ~ old_rose,
         benchmark == "Newly Added" ~ grey40k,
         benchmark == "GF States" ~ grey10k
       ),
       text_color = case_when(
         benchmark == "Above" ~ grey10k,
-        benchmark == "Below" ~ usaid_black,
+        benchmark == "Below" ~ grey10k,
         benchmark == "Newly Added" ~ grey10k,
         benchmark == "GF States" ~ usaid_black
       ))
+
+  df_pco %>% glimpse()
+
+  df_pco <- df_pco %>%
+    rename(
+      psnu = states,
+      TX_CURR = fy21_results,
+      PLHIV = plhiv_t_1,
+      ART_SAT = percent_art_coverage
+    ) %>%
+    mutate(
+      benchmark = case_when(
+        ART_SAT >= .9 ~ "Above",
+        ART_SAT < .9 ~ "Below",
+        TRUE ~ NA_character_
+      )) %>%
+    mutate(
+      benchmark = case_when(
+        is.na(ART_SAT) & psnu %in% c("Abia", "Taraba") ~ "Newly Added",
+        is.na(ART_SAT) & psnu %in% c("Ebonyi", "Anambra") ~ "GF States",
+        is.na(ART_SAT) & psnu == "_Military Nigeria" ~ "Military",
+        TRUE ~ benchmark),
+      fill_color = case_when(
+        benchmark == "Above" ~ genoa,
+        benchmark == "Below" ~ old_rose,
+        benchmark == "Newly Added" ~ grey40k,
+        benchmark == "GF States" ~ grey10k
+      ),
+      text_color = case_when(
+        benchmark == "Above" ~ grey10k,
+        benchmark == "Below" ~ grey10k,
+        benchmark == "Newly Added" ~ grey10k,
+        benchmark == "GF States" ~ usaid_black
+      ))
+
 
   # Admins
   spdf_pepfar %>%
@@ -525,11 +576,36 @@ trend_art_saturation <- function(df) {
   admin1 <- spdf_pepfar %>% filter(label == "prioritization")
   admin2 <- spdf_pepfar %>% filter(label == "community")
 
+  # spdf_art <- admin1 %>%
+  #   left_join(df_art, by = c("uid" = "psnuuid"))
+
   spdf_art <- admin1 %>%
-    left_join(df_art, by = c("uid" = "psnuuid"))
+    left_join(df_pco, by = c("name" = "psnu")) %>%
+    rename(psnu = name) %>%
+    mutate(
+      benchmark = case_when(
+        is.na(ART_SAT) & psnu %in% c("Abia", "Taraba") ~ "Newly Added",
+        is.na(ART_SAT) & psnu %in% c("Ebonyi", "Anambra") ~ "GF States",
+        is.na(ART_SAT) & psnu == "_Military Nigeria" ~ "Military",
+        TRUE ~ benchmark),
+      fill_color = case_when(
+        benchmark == "Above" ~ genoa,
+        benchmark == "Below" ~ old_rose,
+        benchmark == "Newly Added" ~ grey40k,
+        benchmark == "GF States" ~ grey10k
+      ),
+      text_color = case_when(
+        benchmark == "Above" ~ grey10k,
+        benchmark == "Below" ~ grey10k,
+        benchmark == "Newly Added" ~ grey10k,
+        benchmark == "GF States" ~ usaid_black
+      ))
 
 
 # VIZ ----
+
+  # locator Map
+  locator_map(spdf_pepfar, terr, aoi = "Akwa Ibom")
 
   # Produce basemap
   basemap <- terrain_map(countries = admin0,
@@ -570,6 +646,16 @@ trend_art_saturation <- function(df) {
       paste0("NIGERIA - ART Saturation map for ",
              format(Sys.Date(), "%Y%m%d"),
              ".png")),
+    plot = art_map,
+    width = 8,
+    height = 7)
+
+  si_save(
+    filename = file.path(
+      dir_graphics,
+      paste0("NIGERIA - ART Saturation map for ",
+             format(Sys.Date(), "%Y%m%d"),
+             ".svg")),
     plot = art_map,
     width = 8,
     height = 7)
