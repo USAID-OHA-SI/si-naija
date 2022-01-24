@@ -104,22 +104,22 @@
     return(data)
   }
 
-  datim_resources()
-
-  datim_resources(res_name = "Data Elements")
-
-  datim_resources("id", "code", "name", "code", "shortName",
-                  "shortDisplayName", "description",
-                  "categoryoptioncombocode",
-                  res_name = "Data Elements", dataset = T)
-
-  datim_resources(res_name = "Data Elements", dataset = TRUE)
-
-  datim_resources(res_name = "Data Sets", dataset = TRUE)
-
-  datim_resources(res_name = "Category Option Combos", dataset = TRUE)
-
-  datim_resources(res_name = "dataValueSets", dataset = TRUE)
+  # datim_resources()
+  #
+  # datim_resources(res_name = "Data Elements")
+  #
+  # datim_resources("id", "code", "name", "code", "shortName",
+  #                 "shortDisplayName", "description",
+  #                 "categoryoptioncombocode",
+  #                 res_name = "Data Elements", dataset = T)
+  #
+  # datim_resources(res_name = "Data Elements", dataset = TRUE)
+  #
+  # datim_resources(res_name = "Data Sets", dataset = TRUE)
+  #
+  # datim_resources(res_name = "Category Option Combos", dataset = TRUE)
+  #
+  # datim_resources(res_name = "dataValueSets", dataset = TRUE)
 
   # MER Data Sets - Results
   mer_results <- c(
@@ -138,7 +138,8 @@
     "MER Target Setting: PSNU (Facility and Community Combined) - DoD ONLY"
   )
 
-  datim_resources(res_name = "Data Sets", dataset = TRUE) %>%
+  datim_resources(res_name = "Data Sets",
+                  dataset = TRUE) %>%
     filter(name %in% mer_results) %>%
     pull(href) %>%
     #pull(id) %>%

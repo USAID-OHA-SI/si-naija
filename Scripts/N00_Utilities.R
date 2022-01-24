@@ -738,6 +738,32 @@ get_prioritization <- function(df_nat,
       ))
 }
 
+#' @title States Prioritization
+#'
+#'
+set_prioritization <- function(df_nat,
+                               fy = NULL,
+                               cntry = NULL) {
+
+  # Fiscal year
+  if (!is.null(fy))
+    df_nat <- df_nat %>% filter(fiscal_year == fy)
+
+  # Country
+  if(!is.null(cntry))
+    df_nat <- df_nat %>% filter(countryname == cntry)
+
+  # Update prioritization
+  df_nat %>%
+    mutate(
+      snupriority = case_when(
+        psnu %in% c("Akwa Abom", "Rivers", "Delta", "Lagos", "Enugu", "Imo") ~ "Red",
+        psnu %in% c("Gombe", "Nasarawa", "Benue") ~ "Green",
+        psnu %in% c("Abia", "Taraba", "_Military Nigeria") ~ NA_character_,
+        TRUE ~ "Yellow"
+      ))
+}
+
 
 #' @title Round parts to total to 100%
 #'
