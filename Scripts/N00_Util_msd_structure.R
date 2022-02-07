@@ -392,11 +392,11 @@
 # SITE x IM Structure ----
 
   str_msd_sites <- list(
-    # WHEN
+    # WHEN ----
     "periods" = c(
       "fiscal_year"
     ),
-    # WHERE
+    # WHERE ----
     "orgunits" = c(
       "orgunituid",                 # ID
       "sitename",
@@ -418,14 +418,14 @@
       "facilityprioritization",
       "sitetype"
     ),
-    # WHAT: dataElements
+    # WHAT: dataElements ----
     "indicators" = c(
       "indicator",                  # ID
       "numeratordenom",             # ID
       "indicatortype",              # ID
       "source_name"
     ),
-    # WHAT: CategoryOptionsCombo
+    # WHAT: CategoryOptionsCombo ----
     "disaggregates" = c(
       "disaggregate",               # ID
       "standardizeddisaggregate",   # ID
@@ -443,7 +443,7 @@
       "otherdisaggregate_sub",
       "modality"
     ),
-    # WHO: Mechs - AttributesOptionsCombo
+    # WHO: Mechs - AttributesOptionsCombo ----
     "mechanisms" = c(
       "fundingagency",
       "award_number",
@@ -453,7 +453,7 @@
       "primepartner",
       "prime_partner_duns"
     ),
-    # VALUE
+    # VALUE ----
     "values" = c(
       "targets",
       "qtr1",
@@ -462,9 +462,9 @@
       "qtr4",
       "cumulative"
     ),
-    # OTHER
+    # OTHER ----
     "others" = c(),
-    # Slimmed Version of MSD,
+    # # SLIM - Slimmed Version of MSD, ----
     # Similar to Flat Files exported from EMRs
     "data" = c(
       "fiscal_year",  # => Used to reshape reshape / pivot
@@ -481,12 +481,12 @@
       "qtr4",
       "cumulative"
     ),
-    # Columns for cleaned version
-    "cleaned" = c()
+    # Columns for cleaned version ----
+    "cleaned" = c("period", "period_type", "value")
   )
 
 
-# NORMALISE
+# NORMALISE ----
 
   # df_sites %>%
   #   filter(fundingagency != "Dedup") %>%

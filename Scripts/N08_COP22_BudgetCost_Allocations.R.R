@@ -16,8 +16,10 @@
   library(sf)
   library(janitor)
   library(gt)
+  library(scales)
+  library(extrafont)
 
-  source("./Scripts/N00_Utilties.R")
+  source("Scripts/N00_Utilities.R")
 
 # Paths ----
 
@@ -73,7 +75,7 @@
   # Location ----
 
   ## Terrain Raster
-  terr <- get_raster(path = dir_terr)
+  terr <- gisr::get_raster(path = dir_terr)
 
   ## GEO - PEPFAR Orgs boundaries
   spdf_pepfar <- file_shp %>% read_sf()
@@ -102,9 +104,39 @@
   spdf_adm2 <- spdf_nga %>% filter(label == "community")
 
   # MSD - Nat SubNat ----
-  df_nats <- file_nat_subnat %>% read_msd()
 
-  df_nats <- df_nats %>%
+  df_subnats <- file_nat_subnat %>% read_msd()
+
+  df_hiv_burden <- df_subnats %>%
+    filter(indicator %in% inds[1:2],
+           standardizeddisaggregate == "Total Numerator") %>%
+    group_by(fiscal_year, countryname, indicator) %>%
+    summarise(value = sum(targets, na.rm = TRUE), .groups = "drop") %>%
+    pivot_wider(names_from = indicator, values_from = value) %>%
+    arrange(desc(fiscal_year), desc(PLHIV), countryname) %>%
+    mutate(Prevalence = round(PLHIV / POP_EST * 100, 2))
+
+  # df_hiv_burden %>%
+  #   write_csv(file = file.path(dir_dataout, "Nigeria - PLHIV Historical data.csv"), na = "")
+
+
+  df_subnats %>%
+    filter(countryname == cntry,
+           indicator %in% inds[1:2]) %>%
+    distinct(fiscal_year, indicator, standardizeddisaggregate, trendscoarse)
+
+  df_pops <- df_subnats %>%
+    filter(countryname == cntry,
+           fiscal_year == rep_fy,
+           indicator %in% inds[1:2],
+           standardizeddisaggregate %in% c("Age/Sex/HIVStatus", "Age/Sex")) %>%
+    group_by(fiscal_year, psnuuid, psnu, indicator, trendscoarse) %>%
+    summarise(value = sum(targets, na.rm = TRUE), .groups = "drop") %>%
+    pivot_wider(names_from = indicator, values_from = value) %>%
+    mutate(Prevalence = round(PLHIV / POP_EST * 100, 2))
+
+
+  df_nats <- df_subnats %>%
     filter(countryname == cntry,
            indicator %in% inds[1:2],
            standardizeddisaggregate == "Total Numerator") %>%
@@ -126,9 +158,26 @@
   df_sites %>% glimpse()
   df_sites %>% distinct(fundingagency)
 
+  # IP Coverage
+  df_ip <- df_sites %>%
+    filter(fiscal_year == rep_fy,
+           primepartner != "TBD") %>%
+    distinct(fundingagency, psnu, primepartner)
+
+  df_ip_usaid <- df_ip %>%
+    filter(fundingagency == "USAID",
+           psnu != "_Military Nigeria") %>%
+    group_by(primepartner) %>%
+    summarise(states = paste(psnu, collapse = ", ")) %>%
+    ungroup() %>%
+    rename(`Implementing Partner` = primepartner)
+
+
+
   # Above Sites Targets
   df_psnu_targets <- df_sites %>%
-    filter(fundingagency != "Dedup",
+    clean_indicator() %>%
+    filter(fundingagency != "DEDUP",
            indicator %in% inds[3:length(inds)],
            !is.na(targets),
            standardizeddisaggregate %in% ttl_disaggs) %>%
@@ -239,6 +288,54 @@
 
 # VIZ ----
 
+  # PLHIV Prevalence ----
+  df_pops %>%
+    mutate(age = case_when(
+      trendscoarse == "<15" ~ "P",
+      trendscoarse == "15+" ~ "A",
+      TRUE ~ NA_character_
+    )) %>%
+    select(-fiscal_year, - psnuuid, -trendscoarse) %>%
+    arrange(desc(Prevalence), psnu) %>%
+    pivot_wider(names_from = age,
+                values_from = c(PLHIV, POP_EST, Prevalence)) %>%
+    select(psnu, ends_with("A"), ends_with("P")) %>%
+    #write_csv(file = file.path(dir_dataout, "NIGERIA-C_ALHIV Prevalence.csv"))
+    gt(rowname_col = "psnu") %>%
+    tab_spanner(label = "PEDS", columns = ends_with("P")) %>%
+    tab_spanner(label = "ADULTS", columns = ends_with("A")) %>%
+    tab_header(title = "NIGERIA - CY21 C/ALHIV Prevalence",
+               subtitle = "Note: Peds are <15 and Adults are 15+") %>%
+    cols_label(
+      PLHIV_P = "PLHIV",
+      PLHIV_A = "PLHIV",
+      POP_EST_P = "POP_EST",
+      POP_EST_A = "POP_EST",
+      Prevalence_P = "Prevalence",
+      Prevalence_A = "Prevalence"
+    ) %>%
+    opt_all_caps(
+      all_caps = TRUE
+    ) %>%
+    fmt_number(
+      columns = starts_with(c("PLHIV", "POP_EST")),
+      decimals = 0
+    ) #%>%
+    #gtsave(filename = file.path(dir_graphics, "NIGERIA-C_ALHIV Prevalence.png"))
+
+  # Partners Coverage ----
+  df_ip_usaid %>%
+    gt(rowname_col = "psnu") %>%
+    opt_all_caps(
+      all_caps = TRUE
+    ) %>%
+    cols_width(
+      `Implementing Partner` ~ px(250),
+      everything() ~ px(300)) %>%
+  gtsave(filename = file.path(dir_graphics, "NIGERIA- USIAD Partners Coverage.png"))
+
+
+  # PSNU locations ----
   spdf_adm1_prio <- spdf_adm1 %>%
     left_join(df_cov, by = c("uid" = "psnuuid")) %>%
     st_transform(crs = st_crs(3857)) %>%
@@ -296,7 +393,9 @@
                       fontface = "bold") +
         scale_fill_identity() +
         scale_color_identity() +
-        labs(x = "", y = "") +
+        labs(x = "", y = "",
+             title = "This is a title") +
+        #theme(plot.title = element_text(family = "Arial"))
         si_style_map()
 
       print(m)
