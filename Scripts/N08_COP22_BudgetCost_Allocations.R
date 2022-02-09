@@ -17,6 +17,8 @@
   library(janitor)
   library(gt)
   library(scales)
+  library(glue)
+  library(ggtext)
   library(cowplot)
   library(extrafont)
 
@@ -66,6 +68,7 @@
   ttl_disaggs <- c("Total Numerator", "Total Denominator")
 
   rep_pd <- file_site_im %>% identify_pd()
+
   rep_fy <- rep_pd %>%
     str_sub(3, 4) %>%
     paste0("20", .) %>%
@@ -84,12 +87,14 @@
   # Sites
   site_lvl <- get_ouorglevel(operatingunit = cntry, org_type = "facility")
 
-  df_sites_locs <- extract_locations(country = cntry, level = site_lvl) %>%
+  df_sites_locs_raw <- extract_locations(country = cntry, level = site_lvl) %>%
     extract_facilities() %>%
-    filter(!is.na(latitude), !is.na(longitude)) %>%
     select(id, name, latitude, longitude)
 
-  # Attibutes
+  df_sites_locs <- df_sites_locs_raw %>%
+    filter(!is.na(latitude), !is.na(longitude))
+
+  # orgs
   df_attrs <- get_attributes(country = cntry)
 
   spdf_nga <- spdf_pepfar %>%
@@ -99,17 +104,18 @@
   spdf_nga %>% glimpse()
   spdf_nga %>% pull(label) %>% unique()
 
-
+  # Extract boundaries
   spdf_adm0 <- spdf_nga %>% filter(label == "country")
   spdf_adm1 <- spdf_nga %>% filter(label == "prioritization")
   spdf_adm2 <- spdf_nga %>% filter(label == "community")
 
   # MSD - Nat SubNat ----
 
-  df_subnats <- file_nat_subnat %>% read_msd()
+  df_subnats_raw <- file_nat_subnat %>% read_msd()
 
-  df_hiv_burden <- df_subnats %>%
-    filter(indicator %in% inds[1:2],
+  # Extract Country historical ranking for SCA
+  df_hiv_burden <- df_subnats_raw %>%
+    filter(indicator %in% c("PLHIV", "POP_EST"),
            standardizeddisaggregate == "Total Numerator") %>%
     group_by(fiscal_year, countryname, indicator) %>%
     summarise(value = sum(targets, na.rm = TRUE), .groups = "drop") %>%
@@ -120,26 +126,30 @@
   # df_hiv_burden %>%
   #   write_csv(file = file.path(dir_dataout, "Nigeria - PLHIV Historical data.csv"), na = "")
 
-
-  df_subnats %>%
+  # Explore POP Disaggs
+  df_subnats_raw %>%
     filter(countryname == cntry,
            indicator %in% inds[1:2]) %>%
-    distinct(fiscal_year, indicator, standardizeddisaggregate, trendscoarse)
+    distinct(fiscal_year, indicator, standardizeddisaggregate, trendscoarse) %>%
+    arrange(desc(fiscal_year)) %>%
+    prinf()
 
-  df_pops <- df_subnats %>%
+  # Calculate FY21 Prevalence for PEDS vs Adults
+  df_pops <- df_subnats_raw %>%
     filter(countryname == cntry,
            fiscal_year == rep_fy,
-           indicator %in% inds[1:2],
+           indicator %in% c("PLHIV", "POP_EST"),
            standardizeddisaggregate %in% c("Age/Sex/HIVStatus", "Age/Sex")) %>%
     group_by(fiscal_year, psnuuid, psnu, indicator, trendscoarse) %>%
     summarise(value = sum(targets, na.rm = TRUE), .groups = "drop") %>%
     pivot_wider(names_from = indicator, values_from = value) %>%
-    mutate(Prevalence = round(PLHIV / POP_EST * 100, 2))
+    mutate(Prevalence = round(PLHIV / POP_EST * 100, 2)) %>%
+    clean_names()
 
-
-  df_nats <- df_subnats %>%
+  # Set HIV Prioritization by states + POPs
+  df_nats <- df_subnats_raw %>%
     filter(countryname == cntry,
-           indicator %in% inds[1:2],
+           indicator %in% c("PLHIV", "POP_EST"),
            standardizeddisaggregate == "Total Numerator") %>%
     group_by(fiscal_year, psnuuid, psnu, snuprioritization, indicator) %>%
     summarise(value = sum(targets, na.rm = TRUE), .groups = "drop") %>%
@@ -151,18 +161,26 @@
     pivot_wider(names_from = indicator, values_from = value) %>%
     clean_names()
 
-  # MSD - Sites x IM ----
+  # MSD - PSNU/Sites x IM ----
+
+  # PSNU
+  df_psnu <- file_psnu_im %>%
+    read_msd() %>%
+    clean_agency() %>%
+    filter(fundingagency != "DEDUP")
+
+  # Sites
   df_sites <- file_site_im %>%
     read_msd() %>%
-    clean_agency()
+    clean_agency() %>%
+    filter(fundingagency != "DEDUP")
 
   df_sites %>% glimpse()
   df_sites %>% distinct(fundingagency)
 
-  # IP Coverage
+  # IP Coverage table
   df_ip <- df_sites %>%
-    filter(fiscal_year == rep_fy,
-           primepartner != "TBD") %>%
+    filter(fiscal_year == rep_fy, primepartner != "TBD") %>%
     distinct(fundingagency, psnu, primepartner)
 
   df_ip_usaid <- df_ip %>%
@@ -173,31 +191,77 @@
     ungroup() %>%
     rename(`Implementing Partner` = primepartner)
 
+  # Agency Sites Coverage
+  df_agency_sites <- df_sites %>%
+    filter(fiscal_year == rep_fy, sitename != "Data reported above Site level") %>%
+    distinct(fundingagency, psnuuid, psnu,
+             communityuid, community, orgunituid, sitename)
 
+  df_agency_sites <- df_agency_sites %>%
+    left_join(df_sites_locs, by = c("orgunituid" = "id")) %>%
+    select(-name)
 
-  # Above Sites Targets
-  df_psnu_targets <- df_sites %>%
+  df_agency_psnu_sites <- df_agency_sites %>%
+    group_by(fundingagency, psnuuid, psnu) %>%
+    summarise(site_uids = n_distinct(orgunituid),
+              site_names = n_distinct(sitename), .groups = "drop")
+
+  # Site Summaries
+  df_sites_sum <- df_sites %>%
     clean_indicator() %>%
-    filter(fundingagency != "DEDUP",
+    filter(sitename != "Data reported above Site level",
            indicator %in% inds[3:length(inds)],
-           !is.na(targets),
+           standardizeddisaggregate %in% ttl_disaggs) %>%
+    group_by(fiscal_year, fundingagency, psnuuid, psnu,
+             communityuid, community, orgunituid, sitename, indicator) %>%
+    summarise(across(c(starts_with("qtr"), cumulative), sum, na.rm = T), .groups = "drop") %>%
+    reshape_msd() %>%
+    mutate(fiscal_year = as.integer(paste0("20", str_sub(period, 3, 4)))) %>%
+    relocate(fiscal_year, .before = 1)
+
+  # Above Sites Summaries - Results / Targets
+  df_psnu_sum <- df_sites %>%
+    clean_indicator() %>%
+    filter(indicator %in% inds[3:length(inds)],
            standardizeddisaggregate %in% ttl_disaggs) %>%
     group_by(fiscal_year, fundingagency, psnuuid, psnu, indicator) %>%
-    summarise(across(targets, sum, na.rm = T), .groups = "drop") %>%
-    rename(period = fiscal_year, value = targets) %>%
-    mutate(period_type = "targets") %>%
-    relocate(period, .before = 1) %>%
-    relocate(period_type, .before = value)
+    summarise(across(c(starts_with("qtr"), cumulative, targets), sum, na.rm = T), .groups = "drop") %>%
+    reshape_msd() %>%
+    mutate(fiscal_year = as.integer(paste0("20", str_sub(period, 3, 4)))) %>%
+    relocate(fiscal_year, .before = 1)
 
-  df_psnu_targets %>% glimpse()
-  df_psnu_targets %>% head()
+  # Above Sites Summaries - Shares
+  df_psnu_sum <- df_psnu_sum %>%
+    group_by(fiscal_year, indicator, period_type) %>%
+    mutate(ou_share = value / sum(value, na.rm = TRUE)) %>%
+    ungroup() %>%
+    arrange(fiscal_year, period, fundingagency, psnu, indicator, period_type) %>%
+    group_by(fiscal_year, fundingagency, indicator, period_type) %>%
+    mutate(agency_share = value / sum(value, na.rm = TRUE)) %>%
+    ungroup()
+
+  df_psnu_sum %>% glimpse()
+  df_psnu_sum %>% head()
 
   # Agency Coverage & Prioritization
-  df_cov <- df_psnu_targets %>%
-    filter(period == rep_fy, indicator == "TX_CURR") %>%
-    select(fundingagency, psnuuid, psnu) %>%
-    right_join(df_nats2 %>% filter(fiscal_year == rep_fy),
-               by = c("psnuuid", "psnu")) %>%
+  df_nats2 %>%
+    filter(fiscal_year == rep_fy +1) %>%
+    prinf()
+
+  df_agency_cov <- df_psnu_sum %>%
+    filter(fiscal_year %in% c(rep_fy +1),
+           !str_detect(psnu, "^_Mil"),
+           indicator == "TX_CURR",
+           period_type == "targets") %>%
+    distinct(fundingagency, psnuuid, psnu) %>% #prinf()
+    mutate(
+      fundingagency = case_when(
+        psnu == "Lagos" ~ "USAID & CDC",
+        TRUE ~ fundingagency
+      )) %>%
+    distinct() %>%
+    right_join(df_nats2 %>% filter(fiscal_year == rep_fy), by = c("psnuuid", "psnu")) %>%
+    relocate(fiscal_year, .before = 1) %>%
     mutate(fundingagency = case_when(
       is.na(fundingagency) & psnu == "Taraba" ~ "USAID",
       is.na(fundingagency) & psnu == "Abia" ~ "CDC",
@@ -205,11 +269,12 @@
       TRUE ~ fundingagency
     ))
 
+  df_agency_cov %>% glimpse()
+
   # Results by Agency
   df_agency_cascade <- df_sites %>%
     clean_indicator() %>%
-    filter(fundingagency != "DEDUP",
-           indicator %in% inds[3:length(inds)],
+    filter(indicator %in% inds[3:length(inds)],
            standardizeddisaggregate %in% ttl_disaggs) %>%
     group_by(fiscal_year, fundingagency, indicator) %>%
     summarise(across(c(starts_with("qtr"), cumulative, targets), sum, na.rm = T),
@@ -289,31 +354,31 @@
 
 # VIZ ----
 
-  # PLHIV Prevalence ----
+  # PEDS / Adults PLHIV Prevalence ----
   df_pops %>%
     mutate(age = case_when(
-      trendscoarse == "<15" ~ "P",
-      trendscoarse == "15+" ~ "A",
+      trendscoarse == "<15" ~ "p",
+      trendscoarse == "15+" ~ "a",
       TRUE ~ NA_character_
     )) %>%
     select(-fiscal_year, - psnuuid, -trendscoarse) %>%
-    arrange(desc(Prevalence), psnu) %>%
+    arrange(desc(prevalence), psnu) %>%
     pivot_wider(names_from = age,
-                values_from = c(PLHIV, POP_EST, Prevalence)) %>%
-    select(psnu, ends_with("A"), ends_with("P")) %>%
+                values_from = c(plhiv, pop_est, prevalence)) %>%
+    select(psnu, ends_with("a"), ends_with("p")) %>%
     #write_csv(file = file.path(dir_dataout, "NIGERIA-C_ALHIV Prevalence.csv"))
     gt(rowname_col = "psnu") %>%
-    tab_spanner(label = "PEDS", columns = ends_with("P")) %>%
-    tab_spanner(label = "ADULTS", columns = ends_with("A")) %>%
+    tab_spanner(label = "PEDS", columns = ends_with("p")) %>%
+    tab_spanner(label = "ADULTS", columns = ends_with("p")) %>%
     tab_header(title = "NIGERIA - CY21 C/ALHIV Prevalence",
                subtitle = "Note: Peds are <15 and Adults are 15+") %>%
     cols_label(
-      PLHIV_P = "PLHIV",
-      PLHIV_A = "PLHIV",
-      POP_EST_P = "POP_EST",
-      POP_EST_A = "POP_EST",
-      Prevalence_P = "Prevalence",
-      Prevalence_A = "Prevalence"
+      plhiv_p = "PLHIV",
+      plhiv_a = "PLHIV",
+      pop_est_p = "POP_EST",
+      pop_est_a = "POP_EST",
+      prevalence_p = "Prevalence",
+      prevalence_a = "Prevalence"
     ) %>%
     opt_all_caps(
       all_caps = TRUE
@@ -321,19 +386,157 @@
     fmt_number(
       columns = starts_with(c("PLHIV", "POP_EST")),
       decimals = 0
-    ) #%>%
-    #gtsave(filename = file.path(dir_graphics, "NIGERIA-C_ALHIV Prevalence.png"))
+    ) %>%
+    gtsave(filename = file.path(dir_graphics, "NIGERIA-C_ALHIV Prevalence.png"))
 
-  # Partners Coverage ----
+  # Partners Coverage Table ----
   df_ip_usaid %>%
     gt(rowname_col = "psnu") %>%
-    opt_all_caps(
-      all_caps = TRUE
-    ) %>%
+    opt_all_caps( all_caps = TRUE) %>%
     cols_width(
       `Implementing Partner` ~ px(250),
       everything() ~ px(300)) %>%
   gtsave(filename = file.path(dir_graphics, "NIGERIA- USIAD Partners Coverage.png"))
+
+  # Country Basemap
+  basemap <- terrain_map(countries = cntry,
+                         adm0 = spdf_adm0,
+                         adm1 = spdf_adm1,
+                         terr = terr,
+                         mask = TRUE)
+
+  map_cntry <- basemap +
+    geom_sf_text(data = spdf_adm1,
+            aes(label = name),
+            size = 4, color = grey80k)
+
+  # Agency Coverage
+  df_agency_cov_colors <- df_agency_cov %>%
+    mutate(
+      color_fill_agency = case_when(
+        fundingagency == "USAID" ~ usaid_medblue,
+        fundingagency == "CDC" ~ usaid_lightblue,
+        fundingagency == "USAID & CDC" ~ moody_blue,
+        TRUE ~ grey30k
+      ),
+      color_fill_prio = case_when(
+        snupriority == "red" ~ usaid_red,
+        snupriority == "yellow" ~ old_rose,
+        snupriority == "green" ~ genoa,
+        TRUE ~ grey10k
+      ))
+
+  spdf_cov <- spdf_adm1 %>%
+    left_join(df_agency_cov_colors,
+              by = c("uid" = "psnuuid"))
+
+  # Agency Areas summary
+  df_agency_psnu_sites %>%
+    group_by(fundingagency) %>%
+    summarise(sites = sum(site_uids))
+
+  df_sites_cov <- df_sites_sum %>%
+    filter(fiscal_year == rep_fy,
+           #period == rep_pd,
+           period_type == "cumulative",
+           indicator == "TX_CURR") %>%
+    mutate(fundingagency = case_when(
+      psnu == "Lagos" ~ "USAID & CDC",
+      TRUE ~ fundingagency
+    )) %>%
+    group_by(fundingagency) %>%
+    summarise(sites = n_distinct(orgunituid),
+              art = sum(value, na.rm = T), .groups = "drop")
+
+  n_agencies <- spdf_cov %>%
+    st_transform(crs = st_crs(3857)) %>%
+    group_by(fundingagency) %>%
+    summarise(states = n_distinct(psnu),
+              geometry = st_union(geometry), .groups = "drop") %>%
+    mutate(area = st_area(geometry),
+           area = units::set_units(area, value = km^2),
+           area = as.numeric(area),
+           area_share = area / sum(area)) %>%
+    st_drop_geometry() %>%
+    arrange(desc(area), states) %>%
+    left_join(df_sites_cov, by = "fundingagency") %>%
+    rename(agency = fundingagency) %>%
+    mutate(sites_per_km = sites / area,
+           patients_per_km = art / area * 1000) %>%
+    relocate(sites_per_km, .after = sites)
+
+  n_usaid <- n_agencies %>%
+    filter(agency == "USAID") %>%
+    pull(states)
+
+  n_cdc <- n_agencies %>%
+    filter(agency == "CDC") %>%
+    pull(states)
+
+  n_gf <- n_agencies %>%
+    filter(agency == "GF") %>%
+    pull(states)
+
+  # Table Coverage
+  tbl_cov <- n_agencies %>%
+    gt() %>%
+    cols_label(area = "area (KM^2)",
+               area_share = "% of Country",
+               sites_per_km = "# of S. / 1k KM^2",
+               patients_per_km = "# P. / KM^2") %>%
+    opt_all_caps( all_caps = TRUE) %>%
+    cols_width(
+      agency ~ px(120),
+      states ~ px(50),
+      everything() ~ px(100)) %>%
+    fmt_number(columns = c(area, sites, art, patients_per_km), decimals = 0) %>%
+    fmt_number(columns = c(sites_per_km), decimals = 4) %>%
+    fmt_percent(columns = area_share, decimals = 1) %>%
+    tab_footnote(footnote = "Areas are approximates",
+                 locations = cells_column_labels(columns = area)) %>%
+    tab_style(
+      style = list(cell_text(color = usaid_medblue, weight = "bold")),
+      locations = cells_body(columns = agency, rows = agency == "USAID")
+    ) %>%
+    tab_style(
+      style = list(cell_text(color = usaid_lightblue, weight = "bold")),
+      locations = cells_body(columns = agency, rows = agency == "CDC")
+    ) %>%
+    tab_style(
+      style = list(cell_text(color = grey30k, weight = "bold")),
+      locations = cells_body(columns = agency, rows = agency == "GF")
+    ) %>%
+    tab_style(
+      style = list(cell_text(color = moody_blue, weight = "bold")),
+      locations = cells_body(columns = agency, rows = agency == "USAID & CDC")
+    )
+
+    #gtsave(filename = file.path(dir_graphics, "NIGERIA- USIAD Partners Coverage.png"))
+
+
+  # Map of coverage
+  map_cov <- basemap +
+    geom_sf(data = spdf_cov,
+            aes(fill = color_fill_agency),
+            size = .2, color = grey10k) +
+    geom_sf(data = spdf_adm0,
+            colour = grey10k,
+            fill = NA,
+            size = 1.5) +
+    geom_sf(data = spdf_adm0,
+            colour = grey90k,
+            fill = NA,
+            size = .3) +
+    scale_fill_identity() +
+    labs(title = "COP22 - States Coverage by Agency",
+         subtitle = glue("<span style='color:{usaid_medblue}'>USAID</span> covers {n_usaid} states, while <span style='color:{usaid_lightblue}'>CDC</span> has {n_cdc}, and <span style='color:{grey30k}'>GF</span> has {n_gf}<br/>Both USAID & CDC cover <span 'color:{moody_blue}'>Lagos</span>")) +
+    theme(plot.subtitle = element_markdown())
+
+
+
+
+
+
 
 
   # PSNU locations ----
