@@ -17,6 +17,7 @@
   library(janitor)
   library(gt)
   library(scales)
+  library(cowplot)
   library(extrafont)
 
   source("Scripts/N00_Utilities.R")
