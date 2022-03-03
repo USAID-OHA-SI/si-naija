@@ -868,3 +868,70 @@ curr_date <- function(fmt = "%Y-%m-%d") {
 
   return(d)
 }
+
+#' @title Get n% of a number
+#'
+#' @param num  Number
+#' @param prop Proportion, default 1
+#' @param ...  Other valid options of round
+#'
+get_proportion <- function(n, p = 1, ...) {
+  base::sapply(n, function(x) {
+    round((x * (p / 100)), ...)
+  })
+}
+
+
+#' @title Locator map
+#'
+#' @param aoi
+#'
+locator_map <- function(spdf, terr,
+                        country = "Nigeria",
+                        aoi = NULL,
+                        lbl_all = TRUE,
+                        lbl_size = 3) {
+  # Notification
+  print(aoi)
+
+  # Extract admin 0 and 1 for basemap
+  admin0 <- spdf %>%
+    filter(operatingunit == country,
+           label == "country")
+
+  admin1 <- spdf %>%
+    filter(operatingunit == country,
+           label == "snu1")
+
+  # Identify oai
+  locator <- spdf %>%
+    filter(operatingunit == country,
+           label == "prioritization",
+           name == aoi)
+
+  # Target layer for labels
+  if ( lbl_all == TRUE) {
+    lbl_layer <- admin1
+  } else {
+    lbl_layer <- locator
+  }
+
+  # Produce basemap
+  basemap <- terrain_map(countries = admin0,
+                         adm0 = admin0,
+                         adm1 = admin1,
+                         mask = TRUE,
+                         terr = terr)
+
+  # locator map
+  map <- basemap +
+    geom_sf(data = locator,
+            fill = glitr::burnt_sienna,
+            alpha = .8) +
+    geom_sf_text(data = lbl_layer,
+                 aes(label = name),
+                 size = lbl_size,
+                 color = usaid_darkgrey)
+
+  return(map)
+}
