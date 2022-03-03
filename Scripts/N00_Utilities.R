@@ -576,6 +576,48 @@ clean_modalities <- function(.data, colname = "modality") {
     )))
 }
 
+#' @title Clean ARV Dispsensing
+#'
+#'
+clean_arv_dispense <- function(.data,
+                               colname = "otherdisaggregate",
+                               add_3plus = FALSE) {
+
+  .data <- .data %>%
+    dplyr::mutate(across(all_of(colname), ~ str_remove(., "ARV Dispensing Quantity - "))) %>%
+    dplyr::mutate(across(all_of(colname), ~ case_when(
+      . == "Less than 3 months" ~ "<3",
+      . == "3 to 5 months" ~ "3-5",
+      . == "6 or more months" ~ "6+",
+      is.na(.) ~ "tn",
+      TRUE ~ .
+    )))
+
+  if (add_3plus) {
+
+    val_cols <- c(paste0("qtr", 1:4), "cummulative", "value")
+
+    val_cols <- .data %>%
+      names() %>%
+      intersect(val_cols)
+
+    grp_cols <- .data %>%
+      names() %>%
+      setdiff(c(val_cols, colname))
+
+    print(grp_cols)
+
+    .data <- .data %>%
+      filter(across(all_of(colname), ~ . %in% c("3-5", "6+"))) %>%
+      group_by_at(.vars = all_of(grp_cols)) %>%
+      summarise(across(all_of(val_cols), sum, na.rm = TRUE), .groups = "drop") %>%
+      mutate(!!colname := "3+") %>%
+      bind_rows(.data, .)
+
+  }
+
+  return(.data)
+}
 
 #' @title Clean Index
 #'
@@ -812,3 +854,17 @@ equal_parts <- function(x, percent = T) {
 
 #equal_parts(c(0.01044178, 0.56472255, 0.42483567))
 #equal_parts(c(1.044178, 56.472255, 42.483567))
+
+
+#' @title Get formatted current date
+#'
+#'
+curr_date <- function(fmt = "%Y-%m-%d") {
+  d <- base::Sys.Date()
+
+  if (!is.null(fmt)) {
+    d <- format(d, fmt)
+  }
+
+  return(d)
+}

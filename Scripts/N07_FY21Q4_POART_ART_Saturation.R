@@ -3,6 +3,7 @@
 ##  PURPOSE: ART Saturation Classification
 ##  LICENCE: MIT
 ##  DATE:    2021-12-02
+##  UPDATED: 2022-03-03
 
 
 # DEPENDENCIES ----
@@ -44,15 +45,15 @@ source("../lastmile/Scripts/00_Geo_Utilities.R")
 
   # MER Data - get the latest MSD PSNU x IM file
   file_site_im <- dir_merdata %>%
-    return_latest(pattern = "^MER_.*_Site_IM_.*_N.*.zip$")
+    return_latest(pattern = "Site_IM_FY20.*_N.*.zip$")
 
   # MER Data - get the latest MSD PSNU x IM file
   file_psnu_im <- dir_merdata %>%
-    return_latest(pattern = "^MER_.*_PSNU_IM_.*_N.*.zip$")
+    return_latest(pattern = "PSNU_IM_FY20.*_N.*.zip$")
 
   # NAT Data - get the latest NAT_SUBNAT file
   file_natsub <- dir_merdata %>%
-    return_latest(pattern = "^MER_.*_NAT_SUBNAT_.*.zip$")
+    return_latest(pattern = "NAT_SUBNAT_.*.zip$")
 
   # Shapefile path
   file_shp <- dir_geodata %>%
@@ -374,7 +375,7 @@ trend_art_saturation <- function(df) {
 
 # LOAD DATA ----
 
-  # MSD Data
+  # MSD Data----
   #df_sites <- file_site_im %>% read_msd()
 
   df_psnu_all <- file_psnu_im %>% read_msd()
@@ -388,7 +389,7 @@ trend_art_saturation <- function(df) {
     read_msd() %>%
     filter(countryname == cntry)
 
-  # PCO Data
+  # PCO Data - FY21 Results
   df_pco <- list.files(
     path = dir_data,
     pattern = "^SNU Level Analysis_Iframe",
@@ -396,11 +397,12 @@ trend_art_saturation <- function(df) {
     read_excel(sheet = 1) %>%
     clean_names()
 
-  # SPATIAL DATA
+  # SPATIAL DATA ----
   terr <- gisr::get_raster(path = dir_terr)
 
   spdf_pepfar <- file_shp %>% sf::read_sf()
 
+  # Orgunits ----
   df_attrs <- get_attributes(country = cntry)
 
   spdf_pepfar <- spdf_pepfar %>%
@@ -411,10 +413,9 @@ trend_art_saturation <- function(df) {
     st_drop_geometry() %>%
     distinct(label)
 
-  # spdf_pepfar %>%
-  #   filter(name == "Akwa Ibom",
-  #          label == 'prioritization') %>%
-  #   gview()
+  admin0 <- spdf_pepfar %>% filter(label == "country")
+  admin1 <- spdf_pepfar %>% filter(label == "prioritization")
+  admin2 <- spdf_pepfar %>% filter(label == "community")
 
 
 # MUNGE ----
@@ -448,14 +449,18 @@ trend_art_saturation <- function(df) {
 
   df_psnu_kp %>%
     rename_with(.cols = everything(), .fn = ~str_to_upper(.)) %>%
-    write_csv(file = "./Dataout/Nigeria_KP_Indicators_by_disaggs_20211202.csv", na = "")
+    write_csv(file = paste0("./Dataout/Nigeria_KP_Indicators_by_disaggs_",
+                            format(Sys.Date(), "%Y-%m-%d"),
+                            ".csv", na = ""))
 
   df_psnu_kp %>%
     group_by(fundingagency, indicator) %>%
     summarise(across(c(starts_with("qtr"), cumulative, targets),
                      sum, na.rm = TRUE), .groups = "drop") %>%
     rename_with(.cols = everything(), .fn = ~str_to_upper(.)) %>%
-    write_csv(file = "./Dataout/Nigeria_KP_Indicators_20211202.csv", na = "")
+    write_csv(file = paste0("./Dataout/Nigeria_KP_Indicators_",
+                            format(Sys.Date(), "%Y-%m-%d"),
+                            ".csv", na = ""))
 
 
   # TX_CURR ----
@@ -472,7 +477,8 @@ trend_art_saturation <- function(df) {
     reshape_msd() %>%
     filter(period_type == "results",
            period == curr_pd,
-           psnu %ni% c("Ebonyi", "Anabara")) %>%
+           psnu %ni% c("Ebonyi", "Anabara")
+    ) %>%
     select(-period_type)
 
   # PLHIV ----
@@ -530,63 +536,55 @@ trend_art_saturation <- function(df) {
         benchmark == "Below" ~ grey10k,
         benchmark == "Newly Added" ~ grey10k,
         benchmark == "GF States" ~ usaid_black
-      ))
-
-  df_pco %>% glimpse()
-
-  df_pco <- df_pco %>%
-    rename(
-      psnu = states,
-      TX_CURR = fy21_results,
-      PLHIV = plhiv_t_1,
-      ART_SAT = percent_art_coverage
-    ) %>%
-    mutate(
-      benchmark = case_when(
-        ART_SAT >= .9 ~ "Above",
-        ART_SAT < .9 ~ "Below",
-        TRUE ~ NA_character_
       )) %>%
-    mutate(
-      benchmark = case_when(
-        is.na(ART_SAT) & psnu %in% c("Abia", "Taraba") ~ "Newly Added",
-        is.na(ART_SAT) & psnu %in% c("Ebonyi", "Anambra") ~ "GF States",
-        is.na(ART_SAT) & psnu == "_Military Nigeria" ~ "Military",
-        TRUE ~ benchmark),
-      fill_color = case_when(
-        benchmark == "Above" ~ genoa,
-        benchmark == "Below" ~ old_rose,
-        benchmark == "Newly Added" ~ grey40k,
-        benchmark == "GF States" ~ grey10k
-      ),
-      text_color = case_when(
-        benchmark == "Above" ~ grey10k,
-        benchmark == "Below" ~ grey10k,
-        benchmark == "Newly Added" ~ grey10k,
-        benchmark == "GF States" ~ usaid_black
-      ))
+    clean_names()
 
+  df_art %>% glimpse()
 
-  # Admins
-  spdf_pepfar %>%
-    st_drop_geometry() %>%
-    distinct(label)
-
-  admin0 <- spdf_pepfar %>% filter(label == "country")
-  admin1 <- spdf_pepfar %>% filter(label == "prioritization")
-  admin2 <- spdf_pepfar %>% filter(label == "community")
+  # PCO data ----
+  # df_pco <- df_pco %>%
+  #   rename(
+  #     psnu = states,
+  #     TX_CURR = fy21_results,
+  #     PLHIV = plhiv_t_1,
+  #     ART_SAT = percent_art_coverage
+  #   ) %>%
+  #   mutate(
+  #     benchmark = case_when(
+  #       ART_SAT >= .9 ~ "Above",
+  #       ART_SAT < .9 ~ "Below",
+  #       TRUE ~ NA_character_
+  #     )) %>%
+  #   mutate(
+  #     benchmark = case_when(
+  #       is.na(ART_SAT) & psnu %in% c("Abia", "Taraba") ~ "Newly Added",
+  #       is.na(ART_SAT) & psnu %in% c("Ebonyi", "Anambra") ~ "GF States",
+  #       is.na(ART_SAT) & psnu == "_Military Nigeria" ~ "Military",
+  #       TRUE ~ benchmark),
+  #     fill_color = case_when(
+  #       benchmark == "Above" ~ genoa,
+  #       benchmark == "Below" ~ old_rose,
+  #       benchmark == "Newly Added" ~ grey40k,
+  #       benchmark == "GF States" ~ grey10k
+  #     ),
+  #     text_color = case_when(
+  #       benchmark == "Above" ~ grey10k,
+  #       benchmark == "Below" ~ grey10k,
+  #       benchmark == "Newly Added" ~ grey10k,
+  #       benchmark == "GF States" ~ usaid_black
+  #     ))
 
   # spdf_art <- admin1 %>%
   #   left_join(df_art, by = c("uid" = "psnuuid"))
 
   spdf_art <- admin1 %>%
-    left_join(df_pco, by = c("name" = "psnu")) %>%
+    left_join(df_art, by = c("name" = "psnu")) %>%
     rename(psnu = name) %>%
     mutate(
       benchmark = case_when(
-        is.na(ART_SAT) & psnu %in% c("Abia", "Taraba") ~ "Newly Added",
-        is.na(ART_SAT) & psnu %in% c("Ebonyi", "Anambra") ~ "GF States",
-        is.na(ART_SAT) & psnu == "_Military Nigeria" ~ "Military",
+        is.na(art_sat) & psnu %in% c("Abia", "Taraba") ~ "Newly Added",
+        is.na(art_sat) & psnu %in% c("Ebonyi", "Anambra") ~ "GF States",
+        is.na(art_sat) & psnu == "_Military Nigeria" ~ "Military",
         TRUE ~ benchmark),
       fill_color = case_when(
         benchmark == "Above" ~ genoa,
@@ -631,20 +629,20 @@ trend_art_saturation <- function(df) {
     geom_sf_text(data = spdf_art,
                  aes(label = paste0(str_replace(psnu, " ", "\n"),
                                     "\n",
-                                    ifelse(is.na(ART_SAT), "TBC",
-                                           percent(ART_SAT, 1))),
+                                    ifelse(is.na(art_sat), "TBC",
+                                           percent(art_sat, 1))),
                      color = text_color),
                  size = 2, fontface = "bold") +
     scale_fill_identity() +
     scale_color_identity()
 
 
-
+  # Export Map
   si_save(
     filename = file.path(
       dir_graphics,
-      paste0("NIGERIA - ART Saturation map for ",
-             format(Sys.Date(), "%Y%m%d"),
+      paste0("NIGERIA - ART Saturation map - ",
+             curr_date("%Y%m%d"),
              ".png")),
     plot = art_map,
     width = 8,
@@ -654,8 +652,7 @@ trend_art_saturation <- function(df) {
     filename = file.path(
       dir_graphics,
       paste0("NIGERIA - ART Saturation map for ",
-             format(Sys.Date(), "%Y%m%d"),
-             ".svg")),
+             curr_date("%Y%m%d"), ".svg")),
     plot = art_map,
     width = 8,
     height = 7)
