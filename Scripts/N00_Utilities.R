@@ -16,6 +16,13 @@
 
 ## FUNCTIONS ----
 
+#' @title Open Windows folders / files
+#'
+#'
+open_path <- function(path) {
+  utils::browseURL(path)
+}
+
 #' @title Get Orgunit Prioritization
 #'
 #'

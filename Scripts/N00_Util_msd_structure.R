@@ -31,10 +31,10 @@
                               dataset = FALSE) {
     # datim credentials
     if (missing(username))
-      username <- datim_user()
+      username <- glamr::datim_user()
 
     if (missing(password))
-      password <- datim_pwd()
+      password <- glamr::datim_pwd()
 
     # Base url
     if (missing(base_url))
@@ -54,15 +54,15 @@
 
     # Query data
     data <- api_url %>%
-      datim_execute_query(username, password, flatten = TRUE) %>%
+      glamr::datim_execute_query(username, password, flatten = TRUE) %>%
       purrr::pluck("resources") %>%
       tibble::as_tibble() %>%
-      rename(name = displayName)
+      dplyr::rename(name = displayName)
 
     # Filter if needed
     if (!base::is.null(res_name)) {
       data <- data %>%
-        filter(name == res_name)
+        dplyr::filter(name == res_name)
     }
 
     # Return only the url when results is just 1 row
@@ -161,10 +161,10 @@
 
     # datim credentials
     if (missing(username))
-      username <- datim_user()
+      username <- glamr::datim_user()
 
     if (missing(password))
-      password <- datim_pwd()
+      password <- glamr::datim_pwd()
 
     # Base url
     if (missing(base_url))
@@ -182,10 +182,10 @@
 
     # Query data
     data <- api_url %>%
-      datim_execute_query(username, password, flatten = TRUE) %>%
+      glamr::datim_execute_query(username, password, flatten = TRUE) %>%
       purrr::pluck("sqlViews") %>%
       tibble::as_tibble() %>%
-      rename(uid = id, name = displayName)
+      dplyr::rename(uid = id, name = displayName)
 
     # Filter if needed
     if (!base::is.null(view_name)) {
@@ -221,7 +221,9 @@
 
       # Query data
       data <- dta_url %>%
-        datim_execute_query(username, password, flatten = TRUE)
+        glamr::datim_execute_query(username, password, flatten = TRUE)
+
+      print(data)
 
       # Headers
       headers <- data %>%
@@ -242,11 +244,23 @@
   }
 
   datim_sqlviews()
+
   datim_sqlviews(view_name = "Country, Partner, Agencies")
   datim_sqlviews(view_name = "OU countries", dataset = TRUE)
   datim_sqlviews(view_name = "MER Data Elements", dataset = TRUE)
   datim_sqlviews(view_name = "MER category option combos", dataset = TRUE)
 
+  # Org unit - Facility / Site / Community / PSNU / SNU / Country / OU
+  # Query var=OU:uid
+  datim_sqlviews(view_name = "Data Exchange: Organisation Units", dataset = TRUE)
+  # Mechanisms - COC = Category Option Combo, AOC = Attribute Option Combo
+  datim_sqlviews(view_name = "Mechanisms partners agencies OUS Start End", dataset = TRUE)
+  # Data Elements
+  # Query var=dataSets:uids
+  datim_sqlviews(view_name = "Data sets, elements and combos paramaterized", dataset = TRUE)
+  datim_sqlviews(view_name = "Data sets, elements and combos paramaterized section forms", dataset = TRUE)
+  # Periods - Days (yyyyMMdd), Quarters (yyyyQn), Financial Year (yyyyOct)
+  datim_sqlviews(view_name = "Period information", dataset = TRUE)
 
 
 
@@ -259,10 +273,10 @@
 
     # datim credentials
     if (missing(username))
-      username <- datim_user()
+      username <- glamr::datim_user()
 
     if (missing(password))
-      password <- datim_pwd()
+      password <- glamr::datim_pwd()
 
     # Base url
     if (missing(base_url))
@@ -273,7 +287,7 @@
       paste0("/api/dataElements?format=json&paging=false&fields=:nameable")#:identifiable
 
     data <- api_url %>%
-      datim_execute_query(username, password, flatten = TRUE) %>%
+      glamr::datim_execute_query(username, password, flatten = TRUE) %>%
       purrr::pluck("dataElements") %>%
       tibble::as_tibble()
 
@@ -283,7 +297,7 @@
   datim_data_elements()
 
   # Data Elements
-  datim_mecanisms <- function() {}
+  datim_mechanisms <- function() {}
 
   # Validate Site Level Data
 

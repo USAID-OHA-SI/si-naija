@@ -14,13 +14,13 @@ library(glitr)
 library(glamr)
 library(gisr)
 library(janitor)
-library(gt)
+#library(gt)
 
 # GLOBAL ----
 
   # DIR - Global ----
 
-    dir_merdata <- glamr::si_path("path_msd")
+    dir_merdata <- si_path("path_msd")
     dir_targets <- "../../PEPFAR/COUNTRIES/Nigeria/DataPack"
 
   # DIR - Project ----

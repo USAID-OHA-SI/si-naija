@@ -71,7 +71,7 @@
 
   df_dims <- datim_dimensions()
 
-  df_disaggs <- datim_dim_items("Disaggregation Type")
+  df_disaggs <- glamr::datim_dim_items("Disaggregation Type")
 
   df_coc_map <- datimvalidation::getCategoryOptionCombosMap()
   df_de_map <- datimvalidation::getDataElementMap()
