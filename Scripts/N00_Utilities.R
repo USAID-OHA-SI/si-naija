@@ -23,6 +23,67 @@ open_path <- function(path) {
   utils::browseURL(path)
 }
 
+#' @title Link list items together as a string
+#'
+connect_list <- function(items, connector = "-") {
+  items[!is.na(items)] %>%
+    paste(collapse = connector)
+}
+
+#' @title Read DP
+#'
+#'
+read_dp <- function(filename,
+                    sheet = "PSNUxIM",
+                    header = 14,
+                    repair = "unique") {
+  readxl::read_excel(
+    path = filename,
+    sheet = sheet,
+    range = readxl::cell_limits(c(header, 1), c(NA, NA)),
+    col_types = "text",
+    .name_repair = repair
+  )
+}
+
+#' @title Extract DP Target Values
+#'
+#'
+df_extract_values <- function(.df_cop) {
+  .df_cop %>%
+    select(-ends_with("share")) %>%
+    rename_with(.cols = ends_with("value"),
+                .fn = ~str_remove(., "_value"))# %>%
+  pivot_longer(cols = ends_with("DSD"),
+               names_to = "Attribute",
+               values_to = "Value")
+}
+
+#' @title Extract DP Target Shares
+#'
+#'
+dp_extract_shares <- function(.df_cop) {
+  .df_cop %>%
+    select(PSNU:Rollup, ends_with("share")) %>%
+    rename_with(.cols = ends_with("share"),
+                .fn = ~str_remove(., "_share")) %>%
+    pivot_longer(cols = ends_with("DSD"),
+                 names_to = "Attribute",
+                 values_to = "Share")
+}
+
+#' @title Extract DP Target Shares/Values
+#'
+#'
+dp_extract_data <- function(.df_cop) {
+  .df_cop %>%
+    select(PSNU:Rollup, ends_with(c("share", "value"))) %>%
+    pivot_longer(cols = ends_with(c("share", "value")),
+                 names_to = "attribute",
+                 values_to = "aalue") %>%
+    separate(attribute, into = c("attribute", "support_type", "value_type"))
+}
+
 #' @title Get Orgunit Prioritization
 #'
 #'
@@ -641,6 +702,35 @@ facility_type <- function(.data, colname = "disaggregate") {
 }
 
 
+#' @title Update Mechs
+#'
+#' @description Update details of TBD Mechs
+#'
+#'
+update_mechs <- function(.data) {
+  .data %>%
+    mutate(
+      primepartner = case_when(
+        mech_code == 160521 ~ 'Achieving Health Nigeria Initiative (AHINi)',
+        mech_code == 160522 ~ 'Georgetown Global Health Nigeria (GGHN)',
+        mech_code == 160523 ~ 'Health Systems Consult Limited (HSCL)',
+        mech_code == 160524 ~ 'Center for Clinical Care and Clinical Research (CCCRN)',
+        mech_code == 160525 ~ 'Heartland Alliance Ltd GTE (HALG)',
+        mech_code == 160527 ~ 'AKS & CRS',
+        TRUE ~ primepartner
+      ),
+      mech_name = case_when(
+        mech_code == 160521 ~ 'ACE Cluster 1',
+        mech_code == 160522 ~ 'ACE Cluster 2',
+        mech_code == 160523 ~ 'ACE Cluster 3',
+        mech_code == 160524 ~ 'ACE Cluster 4',
+        mech_code == 160525 ~ 'ACE Cluster 6',
+        mech_code == 160527 ~ 'ACE Cluster 5',
+        TRUE ~ mech_name
+      )
+    )
+}
+
 #' @title Clean Mechs
 #'
 clean_mechs <- function(.data) {
@@ -664,11 +754,21 @@ clean_mechs <- function(.data) {
         mech_name == "Integrated Child Health and Social Services Award (ICHSSA 2)" ~ "ICHSSA 2",
         mech_name == "Integrated Child Health and Social Services Award (ICHSSA 3)" ~ "ICHSSA 3",
         mech_name == "Integrated Child Health and Social Services Award (ICHSSA 4)" ~ "ICHSSA 4",
+        mech_name == "Youth Power Action" ~ "YPA",
+        # FY22 - New Awards
+        mech_name == "ACE Cluster 1" ~ "ACE 1",
+        mech_name == "ACE Cluster 2" ~ "ACE 2",
+        mech_name == "ACE Cluster 3" ~ "ACE 3",
+        mech_name == "ACE Cluster 4" ~ "ACE 4",
+        mech_name == "ACE Cluster 5" ~ "ACE 5",
+        mech_name == "ACE Cluster 6" ~ "ACE 6",
         # CDC
         mech_name == "Partnering Effectively to end AIDS through Results and Learning (PEARL)_2097" ~ "PEARL",
         mech_name == "Global Action towards HIV Epidemic Control in Subnational units in Nigeria (4GATES PROJECT)_2100" ~ "4GATES",
         mech_name == "ACTION to Control HIV Epidemic through Evidence (ACHIEVE)_2099" ~ "ACHIEVE",
         mech_name == "Improving Comprehensive AIDS Response Enhanced for Sustainability (iCARES)_2098" ~ "iCARES",
+        # DOD
+        mech_name == "Henry Jackson Foundation" ~ "HJF",
         TRUE ~ mech_name
       )
     )
@@ -687,17 +787,29 @@ clean_partners <- function(.data) {
         primepartner == "Chemonics International, Inc." ~ "Chemonics",
         primepartner == "JHPIEGO CORPORATION" ~ "JHPIEGO",
         primepartner == "SOCIETY FOR FAMILY HEALTH" ~ "SFH",
-        primepartner == "HEARTLAND ALLIANCE LTD-GTE" ~ "HEARTLAND ALLIANCE",
-        primepartner == "Heartland Alliance International, LLC" ~ "Heartland Alliance",
+        primepartner == "HEARTLAND ALLIANCE" ~ "HEARTLAND",
+        primepartner == "HEARTLAND ALLIANCE LTD-GTE" ~ "HEARTLAND",
+        primepartner == "Heartland Alliance International, LLC" ~ "HEARTLAND",
         primepartner == "CENTER FOR CLINICAL CARE AND CLINICAL RESEARCH LTD GTE" ~ "C4C3R",
-        primepartner == "ASSOCIATION FOR REPRODUCTIVE AND FAMILY HEALTH" ~ "A4RFH",
+        primepartner == "ASSOCIATION FOR REPRODUCTIVE  AND FAMILY HEALTH" ~ "ARFH",
         primepartner == "PRO-HEALTH INTERNATIONAL" ~ "ProHI",
         primepartner == "Management Sciences For Health, Inc." ~ "MHS",
+        primepartner == "APIN PUBLIC HEALTH INITIATIVE S LTD/GTE" ~ "APIN",
+        primepartner == "CATHOLIC CARITAS FOUNDATION O F NIGERIA" ~ "CARITAS",
+        # FY22 - New Partners
+        primepartner == 'Achieving Health Nigeria Initiative (AHINi)' ~ 'AHINi',
+        primepartner == 'Georgetown Global Health Nigeria (GGHN)' ~ 'GGHN',
+        primepartner == 'Health Systems Consult Limited (HSCL)' ~ 'HSCL',
+        primepartner == 'Center for Clinical Care and Clinical Research (CCCRN)' ~ 'CCCRN',
+        primepartner == 'Heartland Alliance Ltd GTE (HALG)' ~ 'HALG',
+        primepartner == 'AKS & CRS' ~ 'AKS & CRS',
         # CDC
         primepartner == "APIN PUBLIC HEALTH INITIATIVES LTD/GTE" ~ "APHI",
         primepartner == "INSTITUTE OF HUMAN VIROLOGY" ~ "IHVN",
         primepartner == "CATHOLIC CARITAS FOUNDATION OF NIGERIA" ~ "CCFN",
         primepartner == "CENTRE FOR INTEGRATED HEALTH PROGRAMS" ~ "CIHP",
+        # DOD
+        primepartner == "Henry M. Jackson Foundation For The Advancement Of Military Medicine, Inc., The" ~ "HJF",
         TRUE ~ primepartner
       )
     )

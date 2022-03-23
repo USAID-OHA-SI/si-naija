@@ -23,12 +23,12 @@
 
   #' @title Datim Resources
   #'
-  datim_resources <- function(...,
-                              base_url = NULL,
+  datim_resources <- function(base_url = NULL,
                               username = NULL,
                               password = NULL,
                               res_name = NULL,
-                              dataset = FALSE) {
+                              dataset = FALSE,
+                              fields = NULL) {
     # datim credentials
     if (missing(username))
       username <- glamr::datim_user()
@@ -43,14 +43,21 @@
     # URL Query Options
     options <- "?format=json&paging=false"
 
-    # List of columns
-    cols <- list(...)
+    if (is.null(fields)) {
+      options <- paste0(options, "&fields=all")
+    } else {
+      options <- paste0(options, "&fields=", paste0(fields, collapse = ","))
+    }
 
-    print(paste0(cols))
+    # List of fields, columns
+    #cols <- list(...)
+    #print(paste0(cols))
 
     # API URL
     api_url <- base_url %>%
       paste0("/api/resources", options)
+
+    print(api_url)
 
     # Query data
     data <- api_url %>%
@@ -61,8 +68,7 @@
 
     # Filter if needed
     if (!base::is.null(res_name)) {
-      data <- data %>%
-        dplyr::filter(name == res_name)
+      data <- data %>% dplyr::filter(name == res_name)
     }
 
     # Return only the url when results is just 1 row
@@ -79,7 +85,7 @@
         unlist() %>%
         last()
 
-      #print(end_point)
+      print(end_point)
 
       dta_url <- dta_url %>% paste0(options)
 
@@ -103,6 +109,7 @@
 
     return(data)
   }
+
 
   # datim_resources()
   #
@@ -132,24 +139,110 @@
   )
 
   # MER Data Sets - Targets
-  mer_targets <- c(
-    "Host Country Targets: COP Prioritization SNU (USG)",
-    "MER Target Setting: PSNU (Facility and Community Combined)",
-    "MER Target Setting: PSNU (Facility and Community Combined) - DoD ONLY"
+  mer_targets1 <- c(
+    "Host Country Targets: COP Prioritization SNU (USG) FY2022",
+    "MER Target Setting: PSNU (Facility and Community Combined) (TARGETS) FY2022",
+    "MER Target Setting: PSNU (Facility and Community Combined) - DoD ONLY (TARGETS) FY2021"
   )
 
-  datim_resources(res_name = "Data Sets",
-                  dataset = TRUE) %>%
-    filter(name %in% mer_results) %>%
+  mer_targets2 <- c(
+    "HC_T_COP_PRIORITIZATION_SNU_USG_FY2022",
+    "MER_T_PSNU_FY2022",
+    "MER_T_PSNU_DOD_ONLY_FY2021"
+  )
+
+  datim_resources()
+
+  datim_resources(res_name = "Data Elements", dataset = T)
+
+  datim_resources(res_name = "Indicators", dataset = T)
+
+  datim_resources(res_name = "Categories", dataset = T)
+
+  datim_resources(res_name = "Category Combos", dataset = T)
+
+  datim_resources(res_name = "Category Option Combos", dataset = T)
+
+  datim_resources(res_name = "Data Sets", dataset = TRUE) %>%
+    #filter(str_detect(name, paste0(mer_targets1, collapse = "|"))) %>%
+    filter(str_detect(code, paste0(mer_targets2, collapse = "|"))) %>%
     pull(href) %>%
+    first() %>%
     #pull(id) %>%
     map_dfr(function(.x){
-      data <- .x %>%
-        paste0("/?data.json&paging=false") %>%
-        datim_execute_query(username, password, flatten = TRUE) %>%
-        purrr::pluck("dataElements") %>%
-        tibble::as_tibble()
+
+      print(paste0("Data Set: ", .x))
+
+      dt_id <- basename(.x)
+
+      dt_url <- .x %>%
+        str_remove(basename(.)) %>%
+        paste0("?format=json&paging=false&fields=*")
+
+      print(dt_url)
+
+      data <- dt_url %>%
+        datim_execute_query(username = datim_user(),
+                            password = datim_pwd(),
+                            flatten = TRUE) %>%
+        purrr::pluck("dataSetElements") %>%
+       tibble::as_tibble()
+
+      return(data)
     })
+
+
+  #' @title Datim Data Sets
+  #'
+  datim_datasets <- function(base_url = NULL,
+                             username = NULL,
+                             password = NULL,
+                             dataset = NULL,
+                             fields = NULL) {
+    # datim credentials
+    if (missing(username))
+      username <- glamr::datim_user()
+
+    if (missing(password))
+      password <- glamr::datim_pwd()
+
+    # Base url
+    if (missing(base_url))
+      base_url <- "https://final.datim.org"
+
+    # API URL
+    api_url <- paste0(base_url, "/api/dataSets")
+
+    # Data Sets
+    if (!missing(dataset) | !is.null(dataset))
+      api_url <- paste0(api_url, "/", dataset)
+
+    # URL Query Options
+    options <- "?format=json&paging=false"
+
+    if (is.null(fields)) {
+      options <- paste0(options, "&fields=all")
+    } else {
+      options <- paste0(options, "&fields=", paste0(fields, collapse = ","))
+    }
+
+    # Query data
+    data <- api_url %>%
+      glamr::datim_execute_query(username, password, flatten = TRUE) %>%
+      purrr::pluck("dataSetElements") %>%
+      tibble::as_tibble()
+
+    return(data)
+  }
+
+  # Sample query
+  datim_resources(res_name = "Data Sets", dataset = TRUE) %>%
+    filter(str_detect(code, paste0(mer_targets2, collapse = "|"))) %>%
+    pull(id) %>%
+    nth(2) %>%
+    #first() %>%
+    map_dfr(~datim_datasets(dataset = .x))
+
 
   #' @title Datim SQLViews
   #'
@@ -157,6 +250,7 @@
                              username = NULL,
                              password = NULL,
                              view_name = NULL,
+                             pattern = TRUE,
                              dataset = FALSE) {
 
     # datim credentials
@@ -192,10 +286,17 @@
 
       print(glue::glue("Searching for SQL View: {view_name} ..."))
 
-      data <- data %>%
-        filter(str_detect(
-          str_to_lower(name),
-          paste0("^", str_to_lower(view_name))))
+      if (pattern) {
+        data <- data %>%
+          filter(str_detect(
+            str_to_lower(name),
+            paste0("^", str_to_lower(view_name))))
+
+      } else {
+
+        data <- data %>%
+          filter(str_to_lower(name) == str_to_lower(view_name))
+      }
     }
 
     # Return only ID when results is just 1 row
@@ -217,13 +318,15 @@
       dta_url <- base_url %>%
         paste0(end_point, dta_uid, "/data", options, "&fields=*") #:identifiable, :nameable
 
-      print(glue::glue("SQL View url: {dta_url}"))
+      print(glue::glue("SQL View URL: {dta_url}"))
 
       # Query data
       data <- dta_url %>%
         glamr::datim_execute_query(username, password, flatten = TRUE)
 
-      print(data)
+      if ("message" %in% names(data)) {
+        stop(paste0(data$status, ": ", data$message))
+      }
 
       # Headers
       headers <- data %>%
@@ -257,7 +360,7 @@
   datim_sqlviews(view_name = "Mechanisms partners agencies OUS Start End", dataset = TRUE)
   # Data Elements
   # Query var=dataSets:uids
-  datim_sqlviews(view_name = "Data sets, elements and combos paramaterized", dataset = TRUE)
+  datim_sqlviews(view_name = "Data sets, elements and combos paramaterized", pattern = F, dataset = TRUE)
   datim_sqlviews(view_name = "Data sets, elements and combos paramaterized section forms", dataset = TRUE)
   # Periods - Days (yyyyMMdd), Quarters (yyyyQn), Financial Year (yyyyOct)
   datim_sqlviews(view_name = "Period information", dataset = TRUE)
@@ -308,8 +411,7 @@
 
   df_sites <- glamr::return_latest(
       folderpath = glamr::si_path(),
-      pattern = "Site_IM_.*_Nigeria"
-    ) %>%
+      pattern = "Site_IM_.*_Nigeria") %>%
     gophr::read_msd()
 
   df_sites <- df_sites %>%
