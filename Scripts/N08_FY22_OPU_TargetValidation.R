@@ -3,7 +3,7 @@
 ##  PURPOSE: FY22 OPU Targets validation
 ##  LICENCE: MIT
 ##  DATE:    2022-01-05
-##  UPDATED: 2022-03-16
+##  UPDATED: 2022-03-23
 
 ## Libraries ----
 
@@ -30,7 +30,7 @@
   dir_graphics <- "Graphics"
   dir_cop21 <- "../../PEPFAR/COUNTRIES/Nigeria/OPUs/COP21-FY22"
 
-  dir_cop21 %>% open_path()
+  #dir_cop21 %>% open_path()
 
   # Files
   file_site_im <- dir_merdata %>%
@@ -65,6 +65,8 @@
 ## FUNCTION ----
 
   #' @title Link list items together as a string
+  #' @param items
+  #' @param connector
   #'
   connect_list <- function(items, connector = "-") {
     items[!is.na(items)] %>%
@@ -90,13 +92,15 @@
   df_psnu <- file_psnu_im %>% read_msd()
 
   df_psnu %>% glimpse()
+
   df_psnu %>% distinct(indicator) %>% prinf()
 
-  # check for Placeholder IMs
+  # check for Placeholder IMs - These are New ACEs
   df_psnu %>%
     filter(fiscal_year == curr_fy,
            str_detect(mech_name, "Placeholder")) %>%
-    distinct(mech_code, mech_name)
+    distinct(mech_code, mech_name) %>%
+    arrange(mech_code)
 
   # TX_PVLS Targets
   df_psnu %>%
@@ -112,8 +116,7 @@
 
   # Indicator Type x IM
   df_psnu %>%
-    filter(fiscal_year == curr_fy,
-           indicator %in% inds,
+    filter(fiscal_year == curr_fy, indicator %in% inds,
            str_detect(standardizeddisaggregate, "Total ")) %>%
     clean_indicator() %>%
     distinct(fundingagency, psnu, mech_code, indicator, indicatortype) %>%
@@ -150,7 +153,7 @@
 
   # OPU - Targets ----
 
-  # OPU - Flat file
+  # OPU - Flat file ----
   file_opu_flats %>% excel_sheets()
 
   # Orgs Reference
@@ -162,7 +165,8 @@
   df_flat_raw <- file_opu_flats %>% read_excel(sheet = 1)
 
   df_flat_indicators <- df_flat_raw %>%
-    distinct(indicator_code)
+    distinct(indicator_code) %>%
+    arrange(indicator_code)
 
   df_flat_indicators %>% prinf()
 
@@ -178,14 +182,8 @@
                        ifelse(is.na(Sex), "", Sex))) %>%
     relocate(ID, .after = KeyPop)
 
-  # df_flat <- df_flat %>%
-  #   mutate(ID = paste0(PSNU, "|", indicator_code,
-  #                      ifelse(is.na(Age), "", paste0(Age, "|")),
-  #                      ifelse(is.na(Sex), "", Sex),
-  #                      ifelse(is.na(KeyPop), "", paste0("|", KeyPop)))) %>%
-  #   relocate(ID, .after = KeyPop)
 
-  # Check Age/Sex Options
+  # Check Age/Sex Options => Fix age/sex options
   df_flat %>% distinct(Age) %>% arrange(Age)
   df_flat %>% distinct(Sex) %>% arrange(Sex)
 
@@ -221,7 +219,7 @@
            Rollup = NA_integer_) %>%
     ungroup()
 
-  # Check duplicates
+  # Check duplicates => Should be unique
   which(duplicated(df_flat))
 
   df_flat %>%

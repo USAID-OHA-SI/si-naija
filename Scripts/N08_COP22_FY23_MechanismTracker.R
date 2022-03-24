@@ -34,7 +34,7 @@
   dir_cop21 <- "../../PEPFAR/COUNTRIES/Nigeria/COPs/COP21"
   dir_cop22 <- "../../PEPFAR/COUNTRIES/Nigeria/COPs/COP22"
 
-  dir_cop21 %>% open_path()
+  #dir_cop21 %>% open_path()
 
   # Files ----
 
@@ -72,36 +72,6 @@
 
 # FUNCTION ----
 
-  # Datim Login
-
-  #' @title Datim Login
-  #' @description This is wrap around datimutil::loginToDATIM()
-  #'
-  datim_session <- function() {
-
-    #secrets <- Sys.getenv("SECRETS_FOLDER") %>% paste0(., "datim.json")
-    #datimutils::loginToDATIM()
-
-    # OR
-    datimutils::loginToDATIM(username = datim_user(),
-                             password = datim_pwd(),
-                             base_url = "https://www.datim.org/")
-  }
-
-  # Read PSNUxIM Data
-  read_dp()
-
-  # Clean DP Indicatoros
-
-  # Map R to T Indicators
-
-  # Summarize Results to Match Targets
-
-  # IM Indicators by Age/Sex Proportion
-
-# Datim Authentication ----
-
-  datim_session()
 
 # Load Data ----
 
@@ -109,51 +79,38 @@
 
   df_psnu <- file_psnu_im %>% read_msd()
 
-  df_msd_indicators <- df_psnu %>%
-    filter(str_detect(standardizeddisaggregate, "^Total.*tor$", negate = TRUE),
-           str_detect(standardizeddisaggregate, "Age/Sex")) %>%
-    select(indicator, numeratordenom, indicatortype,
-           disaggregate, standardizeddisaggregate,
-           ageasentered, sex,
-           statushiv, statustb, statuscx,
-           statustx = hiv_treatment_status,
-           otherdisaggregate, modality) %>%
-    distinct()
-
   # MSD - Sites x IM ----
 
   df_sites <- file_site_im %>% read_msd()
+
+
+# MUNGING ----
 
   df_sites %>% glimpse()
   df_sites %>% distinct(fundingagency)
   df_sites %>% distinct(psnu) %>% prinf()
 
-
-# MUNGING ----
-
   df_psnu %>% glimpse()
-
   df_psnu %>% distinct(fundingagency)
 
   # USAID/Military Sites => These are community work reported above psnu
   df_sites %>%
     filter(fundingagency == agency,
            str_detect(psnu, "_Mil")) %>%
-    distinct(fundingagency, psnu, community, sitename, facility, sitetype) %>%
-    transpose() %>%
-    unlist() %>%
-    as_tibble(.name_repair = "unique")
+    distinct(fundingagency, psnu, community,
+             sitename, facility, sitetype)
 
   # Military related data
   df_usaid_mil <- df_sites %>%
-    filter(fundingagency == agency, str_detect(psnu, "_Mil"))
+    filter(fundingagency == agency,
+           str_detect(psnu, "_Mil"))
 
   # Mechanisms
-  df_mechs <- df_sites %>%
-    filter(fundingagency != "Dedup",
-           !(fundingagency == agency & str_detect(psnu, "_Mil"))) %>%
+  df_mechs <- df_psnu %>%
+    filter(fundingagency != "Dedup", is.na(cumulative)) %>%
     select(fiscal_year, fundingagency, psnu, mech_code, mech_name, primepartner) %>%
     distinct() %>%
+    clean_agency() %>%
     update_mechs() %>%
     partners_label()
 
@@ -171,16 +128,6 @@
                 values_from = fundingagency,
                 names_sort = TRUE)
 
-  # df_sites %>%
-  #   filter(fiscal_year == curr_fy,
-  #          fundingagency != "Dedup",
-  #          !(fundingagency == agency & str_detect(psnu, "_Mil")),
-  #          community != "Data reported above Community Level") %>%
-  #   distinct(psnu, community, sitename)
-
-
-# VIZ ----
-
   im_closing <- c("81857",
                   "81857",
                   "18655",
@@ -195,6 +142,9 @@
                    "160523",
                    "160527")
 
+
+# VIZ ----
+
   # USAID Mechs - list of States
   df_mechs %>%
     filter(fundingagency == agency) %>%
@@ -203,26 +153,24 @@
   # IM Coverage ----
   plot_ims_cov <-
     df_mechs %>%
-    filter(fundingagency == agency,
-           primepartner != "TBD",
-           fiscal_year == curr_fy) %>%
+    filter(fundingagency == agency, primepartner != "TBD") %>%
     mutate(
       mech_code = case_when(
         mech_code %in% im_closing ~ paste0(mech_code, "*"),
         mech_code %in% im_incoming ~ paste0(mech_code, "**"),
         TRUE ~ mech_code
     )) %>%
-    select(-c(primepartner, mech_name)) %>%
-    arrange(desc(fundingagency), partner, psnu) %>%
-    group_by(mech_code, partner) %>%
-    summarise(psnus = paste0(psnu, collapse = ", "), .groups = "drop") %>%
-    arrange(partner) %>%
+    select(-c(partner)) %>%
+    group_by(fiscal_year, mech_code, primepartner, mech_name) %>%
+    summarise(psnus = paste0(sort(psnu), collapse = ", "), .groups = "drop") %>%
+    arrange(mech_code, primepartner) %>%
     mutate(id = row_number()) %>%
     relocate(id, .before = 1) %>%
-    gt() %>%
+    gt(groupname_col = "fiscal_year") %>%
     cols_label(id = "",
-               mech_code = "MECH. Code",
-               partner = "IP & MECH. NAME",
+               mech_code = "CODE",
+               mech_name = "MECHANISM",
+               primepartner = "PARTNER",
                psnus = "STATES") %>%
     tab_header(title = md("**USAID/NIGERIA - IMPLEMENTING MECHANISMS**")) %>%
     fmt_missing(columns = everything(), missing_text = "....") %>%
@@ -258,11 +206,11 @@
 
   gtsave(data = plot_ims_cov,
          filename = paste0(dir_graphics, "/Nigeria - Mechanisms State Coverage.png"),
-         zoom = .6)
+         zoom = .7)
 
   gtsave(data = plot_ims_cov,
          filename = paste0(dir_graphics, "/Nigeria - Mechanisms State Coverage.pdf"),
-         zoom = .6)
+         zoom = .7)
 
   ## Mechs - State Coverage ----
   plot_psnu_cov <-
@@ -288,7 +236,8 @@
       cols_label(id = "",
                  psnu = "STATE",
                  partners = "MECHANISMS") %>%
-      tab_header(title = md("**USAID/NIGERIA - IMPLEMENTING MECHANISMS**")) %>%
+      tab_header(title = md(paste0("**USAID/NIGERIA - ",
+                                   curr_fy, " IMPLEMENTING MECHANISMS**"))) %>%
       fmt_missing(columns = everything(), missing_text = "....") %>%
       fmt_markdown(columns = partners, rows = everything()) %>%
       tab_style(
@@ -315,17 +264,17 @@
       tab_source_note(source_note = "** Mechanisms starting this year")
 
   gtsave(data = plot_psnu_cov,
-         filename = paste0(dir_graphics, "/Nigeria - States Mechanisms Coverage.png"),
+         filename = paste0(dir_graphics, "/Nigeria - ", curr_fy, " States Mechanisms Coverage.png"),
          zoom = .7)
 
   gtsave(data = plot_psnu_cov,
-         filename = paste0(dir_graphics, "/Nigeria - States Mechanisms Coverage.pdf"),
+         filename = paste0(dir_graphics, "/Nigeria - ", curr_fy, " States Mechanisms Coverage.pdf"),
          zoom = .7)
 
 
   # IM List ----
   plot_ims <- df_mechs %>%
-    filter(primepartner != "TBD") %>%
+    filter(primepartner != "TBD", fiscal_year == curr_fy) %>%
     mutate(partner = paste0(mech_code, " - ", partner)) %>%
     select(-c(primepartner, mech_name)) %>%
     arrange(desc(fundingagency), psnu, partner) %>%

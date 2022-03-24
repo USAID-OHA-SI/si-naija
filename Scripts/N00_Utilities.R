@@ -826,6 +826,21 @@ partners_label <- function(.data) {
 }
 
 
+#' @title Extract Mechanisms Details
+#' @description
+#' @param .df_msd MSD Dataset
+#'
+extract_mechs <- function(.df_msd) {
+  .df_msd %>%
+    filter(fundingagency != "Dedup", is.na(cumulative)) %>%
+    select(fiscal_year, fundingagency, psnu, mech_code, mech_name, primepartner) %>%
+    distinct() %>%
+    clean_agency() %>%
+    update_mechs() %>%
+    partners_label()
+}
+
+
 #' @title Identify MSD Consecutive Periods
 #'
 #'

@@ -3,7 +3,7 @@
 ##  PURPOSE: COP22 / FY23 Targets Allocation
 ##  LICENCE: MIT
 ##  DATE:    2022-03-17
-##  UPDATED: 2022-03-17
+##  UPDATED: 2022-03-23
 
 ## Libraries ----
 
@@ -67,7 +67,21 @@
     str_replace("FY", "20") %>%
     as.numeric()
 
+  # indicators
   inds <- c("HTS_TST", "HTS_TST_POS", "TX_NEW", "TX_CURR", "TX_PVLS_D", "TX_PVLS_N")
+
+  # Age bands
+  cop_age_labels <- list(peds = "<15",
+                         adolescent = "15-19",
+                         young = "20-24",
+                         adult = "25+")
+
+  cop_age_values <- list(peds = c("<01", "01-04", "05-09", "10-14"),
+                         adolescent = c("15-19"),
+                         young = c("20-24"),
+                         adult = c("25-24", "25-29", "30-34",
+                                   "35-39", "40-44", "45-49",
+                                   "50-54", "55-59", "60+"))
 
 
 # FUNCTION ----
@@ -117,7 +131,7 @@
            ageasentered, sex,
            statushiv, statustb, statuscx,
            statustx = hiv_treatment_status,
-           otherdisaggregate, modality) %>%
+           otherdisaggregate, modality, source_name) %>%
     distinct()
 
   # MSD - Sites x IM ----
