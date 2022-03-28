@@ -3,7 +3,7 @@
 ##  PURPOSE: FY22 OPU Targets validation
 ##  LICENCE: MIT
 ##  DATE:    2022-01-05
-##  UPDATED: 2022-03-23
+##  UPDATED: 2022-03-28
 
 ## Libraries ----
 
@@ -13,6 +13,7 @@
   library(glamr)
   library(tameDP)
   library(janitor)
+  library(fuzzyjoin)
   library(glue)
 
   library(datapackr)
@@ -23,7 +24,8 @@
 
 ## GLOBALS ----
 
-  # Dirs
+  # Directories
+
   dir_merdata <- si_path("path_msd")
   dir_data <- "Data"
   dir_dataout <- "Dataout"
@@ -40,7 +42,7 @@
     glamr::return_latest(pattern = "PSNU_IM_FY20.*_N")
 
   file_opu_dp <- dir_cop21 %>%
-    return_latest("^OPU Data Pack_.*_\\d{8} _rev.xlsx$")
+    return_latest("^OPU Data Pack_Nigeria_\\d{8}.*.xlsx$")
 
   file_opu_checks <- dir_cop21 %>%
     return_latest("^OPU target.*.xlsx$")
@@ -59,32 +61,15 @@
     str_replace("FY", "20") %>%
     as.numeric()
 
-  inds <- c("HTS_TST", "HTS_TST_POS", "TX_NEW", "TX_CURR", "TX_PVLS_D", "TX_PVLS_N")
+  prev_fy <- curr_fy - 1
+
+  inds <- c("HTS_TST", "HTS_TST_POS",
+            "TX_NEW", "TX_CURR",
+            "TX_PVLS", "TX_PVLS_D")
 
 
 ## FUNCTION ----
 
-  #' @title Link list items together as a string
-  #' @param items
-  #' @param connector
-  #'
-  connect_list <- function(items, connector = "-") {
-    items[!is.na(items)] %>%
-      paste(collapse = connector)
-  }
-
-  #' @title Read DP
-  #'
-  #'
-  read_dp <- function(filename, sheet = "PSNUxIM", header = 14) {
-    readxl::read_excel(
-      path = filename,
-      sheet = sheet,
-      range = readxl::cell_limits(c(header, 1), c(NA, NA)),
-      col_types = "text",
-      .name_repair = "minimal"
-    )
-  }
 
 ## DATA ----
 
@@ -93,14 +78,63 @@
 
   df_psnu %>% glimpse()
 
-  df_psnu %>% distinct(indicator) %>% prinf()
-
-  # check for Placeholder IMs - These are New ACEs
   df_psnu %>%
-    filter(fiscal_year == curr_fy,
-           str_detect(mech_name, "Placeholder")) %>%
-    distinct(mech_code, mech_name) %>%
-    arrange(mech_code)
+    distinct(indicator) %>%
+    arrange(indicator) %>%
+    prinf()
+
+  # Prioritization
+  df_psnu %>%
+    get_prioritization(fy = curr_fy) %>%
+    prinf()
+
+    #pull(standardizeddisaggregate) %>% unique()
+
+  # List of msd indicators => 109
+  inds_all <- df_psnu %>%
+    distinct(indicator) %>%
+    arrange(indicator)
+
+  #inds_all %>% prinf()
+
+  # List of required indicators => 35
+  inds_req <- df_psnu %>%
+    filter(source_name == "DATIM") %>%
+    distinct(indicator) %>%
+    arrange(indicator)
+
+  #inds_req %>% prinf()
+
+  # Map base to calculated indicators
+  df_inds <- inds_req %>%
+    rename(base_indicator = indicator) %>%
+    fuzzy_join(x = inds_all, y = .,
+               by = c("indicator" = "base_indicator"),
+               match_fun = str_detect,
+               mode = "left") %>%
+    select(base_indicator, indicator) %>%
+    mutate(
+      base_indicator = case_when(
+        is.na(base_indicator) & indicator == "TX_NET_NEW" ~ "TX_NEW",
+        TRUE ~ base_indicator
+      )
+    ) %>%
+    filter(str_detect(indicator, "^LAB|^HRF", negate = TRUE))
+
+
+  # Indicators containing Age/Sex desagg
+  df_msd_inds <- df_psnu %>%
+    filter(str_detect(standardizeddisaggregate, "^Total.*tor$", negate = TRUE),
+           str_detect(standardizeddisaggregate, "Age/Sex") |
+           str_detect(standardizeddisaggregate, "KeyPop")) %>%
+    select(indicator, numeratordenom, indicatortype,
+           disaggregate, standardizeddisaggregate,
+           ageasentered, sex,
+           statushiv, statustb, statuscx,
+           statustx = hiv_treatment_status,
+           otherdisaggregate, modality, source_name) %>%
+    distinct()
+
 
   # TX_PVLS Targets
   df_psnu %>%

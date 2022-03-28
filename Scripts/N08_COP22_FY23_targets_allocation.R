@@ -56,6 +56,7 @@
   # Params ----
 
   cntry <- "Nigeria"
+
   ou_uid <- get_ouuid(cntry)
 
   agency <- "USAID"
@@ -68,7 +69,18 @@
     as.numeric()
 
   # indicators
-  inds <- c("HTS_TST", "HTS_TST_POS", "TX_NEW", "TX_CURR", "TX_PVLS_D", "TX_PVLS_N")
+  inds <- c("HTS_TST", "HTS_TST_POS", "TX_NEW", "TX_CURR", "TX_PVLS", "TX_PVLS_D")
+
+  inds_cascade <- c("HTS_TST", "HTS_TST_POS", "PMTCT_HEI_POS",
+                    "TX_NEW", "TX_CURR",
+                    "TX_PVLS", "TX_PVLS_D")
+
+  disaggs_cascade <- c(
+    "Modality/Age/Sex/Result",
+    "KeyPop/Result",
+    "Age/Sex/HIVStatus",
+    "KeyPop/HIVStatus"
+  )
 
   # Age bands
   cop_age_labels <- list(peds = "<15",
@@ -141,6 +153,79 @@
   df_sites %>% glimpse()
   df_sites %>% distinct(fundingagency)
   df_sites %>% distinct(psnu) %>% prinf()
+
+  # FY22 Targets
+  df_obs_cascade1a <- df_psnu %>%
+    filter(fiscal_year == curr_fy) %>%
+    clean_indicator() %>%
+    filter(indicator %in% inds_cascade,
+           standardizeddisaggregate == "Total Numerator") %>%
+    mutate(
+      indicator = case_when(
+        indicator == "PMTCT_HEI_POS" ~ "HTS_TST_POS",
+        TRUE ~ indicator
+      )) %>%
+    group_by(psnu, indicator) %>%
+    summarise(across(targets, sum, na.rm = TRUE), .groups = "drop") %>%
+    rename(targets_currfy = targets)
+
+  # FY21 Targets & Results
+  df_obs_cascade1b <- df_psnu %>%
+    filter(fiscal_year == prev_fy) %>%
+    clean_indicator() %>%
+    filter(indicator %in% inds_cascade,
+           standardizeddisaggregate == "Total Numerator") %>%
+    mutate(
+      indicator = case_when(
+        indicator == "PMTCT_HEI_POS" ~ "HTS_TST_POS",
+        TRUE ~ indicator
+      )) %>%
+    group_by(psnu, indicator) %>%
+    summarise(across(c(targets, cumulative, starts_with("qtr")),
+                     sum, na.rm = TRUE), .groups = "drop") %>%
+    rename(target_prevfy = targets)
+
+  # FY21 T&R + FY22 T
+  df_obs_cascade1c <- df_psnu %>%
+    filter(fiscal_year %in% c(prev_fy, curr_fy)) %>%
+    clean_indicator() %>%
+    filter(
+      indicator %in% inds_cascade,
+      #standardizeddisaggregate == "Total Numerator"
+      standardizeddisaggregate %in% disaggs_cascade,
+      !is.na(ageasentered)
+    ) %>%
+    mutate(
+      indicator = case_when(
+        indicator == "PMTCT_HEI_POS" ~ "HTS_TST_POS",
+        TRUE ~ indicator
+      )) %>%
+    group_by(psnu, indicator, ageasentered, sex) %>%
+    summarise(
+      observed = sum(cumulative[fiscal_year == prev_fy], na.rm = T),
+      planned = sum(targets[fiscal_year == curr_fy], na.rm = T),
+      .groups = "drop"
+    )
+
+  df_obs_cascade1c <- df_obs_cascade1c %>%
+    group_by(psnu, indicator) %>%
+    summarise(across(all_of(c("observed", "planned")), sum, na.rm = T), .groups = "drop") %>%
+    mutate(ageasentered = NA_character_, sex = NA_character_) %>%
+    bind_rows(df_obs_cascade1c, .) %>%
+    pivot_wider(names_from = indicator,
+                names_sep = "_",
+                values_from = c(observed, planned)) %>%
+    arrange(psnu, ageasentered, sex)
+
+  # PMTCT
+  df_obs_pmtct <- df_psnu %>%
+    filter(fiscal_year %in% c(prev_fy, curr_fy)) %>%
+    clean_indicator() %>%
+    filter(indicator %in% inds_cascade,
+           standardizeddisaggregate %in% disaggs_cascade) %>%
+    group_by(psnu, indicator, ageasentered, sex) %>%
+    summarise(across(c(targets, cumulative, starts_with("qtr")),
+                     sum, na.rm = TRUE), .groups = "drop")
 
   # COP Data ----
   cop_year <- curr_fy

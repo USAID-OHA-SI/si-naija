@@ -909,7 +909,7 @@ get_prioritization <- function(df_nat,
       flag = case_when(
         psnu %in% c("Akwa Abom", "Rivers", "Delta", "Lagos", "Enugu", "Imo") ~ "Red",
         psnu %in% c("Gombe", "Nasarawa", "Benue") ~ "Green",
-        psnu %in% c("Abia", "Taraba", "_Military Nigeria") ~ NA_character_,
+        psnu %in% c("_Military Nigeria") ~ NA_character_,
         TRUE ~ "Yellow"
       ))
 }
@@ -935,7 +935,7 @@ set_prioritization <- function(df_nat,
       snupriority = case_when(
         psnu %in% c("Akwa Abom", "Rivers", "Delta", "Lagos", "Enugu", "Imo") ~ "Red",
         psnu %in% c("Gombe", "Nasarawa", "Benue") ~ "Green",
-        psnu %in% c("Abia", "Taraba", "_Military Nigeria") ~ NA_character_,
+        psnu %in% c("_Military Nigeria") ~ NA_character_,
         TRUE ~ "Yellow"
       ))
 }
