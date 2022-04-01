@@ -3,7 +3,7 @@
 ##  PURPOSE: COP22 / FY23 Targets Allocation
 ##  LICENCE: MIT
 ##  DATE:    2022-03-17
-##  UPDATED: 2022-03-23
+##  UPDATED: 2022-03-31
 
 ## Libraries ----
 
@@ -34,7 +34,7 @@
   dir_cop21 <- "../../PEPFAR/COUNTRIES/Nigeria/COPs/COP21"
   dir_cop22 <- "../../PEPFAR/COUNTRIES/Nigeria/COPs/COP22"
 
-  dir_cop21 %>% open_path()
+  dir_cop22 %>% open_path()
 
   # Files ----
 
@@ -44,14 +44,14 @@
   file_psnu_im <- dir_merdata %>%
     glamr::return_latest(pattern = "PSNU_IM_FY20.*_N")
 
-  file_opu_dp <- dir_cop21 %>%
-    return_latest("^OPU Data Pack_.*_\\d{8} _rev.xlsx$")
+  file_subnat <- dir_merdata %>%
+    glamr::return_latest(pattern = "NAT_SUBNAT_FY15")
 
   file_cop21_dp <- dir_cop21 %>%
     return_latest("COP21 Data Pack .*.xlsx$")
 
   file_cop22_dp <- dir_cop22 %>%
-    return_latest("Nigeria_datapack.*.xlsx$", recursive = T)
+    return_latest("Data Pack_Nigeria_\\d{8}.*.xlsx$")
 
   # Params ----
 
@@ -68,10 +68,16 @@
     str_replace("FY", "20") %>%
     as.numeric()
 
+  prev_fy <- curr_fy - 1
+
+  # Current COP
+  cop_year <- curr_fy
+
   # indicators
   inds <- c("HTS_TST", "HTS_TST_POS", "TX_NEW", "TX_CURR", "TX_PVLS", "TX_PVLS_D")
 
-  inds_cascade <- c("HTS_TST", "HTS_TST_POS", "PMTCT_HEI_POS",
+  inds_cascade <- c("HTS_TST",
+                    "HTS_TST_POS", "PMTCT_HEI_POS",
                     "TX_NEW", "TX_CURR",
                     "TX_PVLS", "TX_PVLS_D")
 
@@ -100,22 +106,7 @@
 
   # Datim Login
 
-  #' @title Datim Login
-  #' @description This is wrap around datimutil::loginToDATIM()
-  #'
-  datim_session <- function() {
-
-    #secrets <- Sys.getenv("SECRETS_FOLDER") %>% paste0(., "datim.json")
-    #datimutils::loginToDATIM()
-
-    # OR
-    datimutils::loginToDATIM(username = datim_user(),
-                             password = datim_pwd(),
-                             base_url = "https://www.datim.org/")
-  }
-
   # Read PSNUxIM Data
-  read_dp()
 
   # Clean DP Indicatoros
 
@@ -227,10 +218,9 @@
     summarise(across(c(targets, cumulative, starts_with("qtr")),
                      sum, na.rm = TRUE), .groups = "drop")
 
-  # COP Data ----
-  cop_year <- curr_fy
-
   # Datim Reference Datasets ----
+
+  datim_session()
 
   cop_mechs <- datapackr::getMechanismView()
 
@@ -263,9 +253,151 @@
   # PSNU => Error - "Obubra General Hospital" is not a PSNU
   cop_psnus <- datapackr::cop22_valid_PSNUs %>% filter(ou == cntry)
 
-  # Data Pack ----
+  # TameDP Data Pack Processing ----
 
-  #file_cop22_dp %>% tameDP::tame_dp()
+  df_dp <- file_cop22_dp %>% tame_dp(type = "PSNUxIM")
+
+  #df_dp <- df_dp %>% filter(mech_code != "00000")
+
+  ## Append Mechanism
+
+  df_dp <- df_dp %>%
+    get_names(df = .,
+              cntry = cntry,
+              datim_user = datim_user(),
+              datim_password = datim_pwd())
+
+  df_dp %>% glimpse()
+
+  ## Check and update missing values
+
+  ## SNUs
+  df_dp %>% distinct(snu1, psnu) %>% prinf()
+
+  df_dp <- df_dp %>% mutate(snu1 = ifelse(is.na(snu1), psnu, snu1))
+
+  ## Agencies
+  df_dp %>% distinct(fundingagency, psnu) %>% prinf()
+
+  df_dp <- df_dp %>%
+    mutate(fundingagency = case_when(
+      str_detect(fundingagency, "Dedupe") ~ "Dedup",
+      TRUE ~ fundingagency
+    ))
+
+  df_dp %>%
+    filter(fundingagency != "Dedup") %>%
+    distinct(fundingagency, psnu) %>%
+    arrange(fundingagency, psnu) %>%
+    prinf()
+
+  ## Indicators
+
+  df_dp_indicators <- df_dp %>%
+    distinct(indicator, numeratordenom, standardizeddisaggregate) %>%
+    arrange(indicator)
+
+  df_dp_indicators %>% prinf()
+
+  df_dp %>%
+    distinct(indicator, numeratordenom, standardizeddisaggregate) %>%
+    arrange(indicator) %>%
+    prinf()
+
+  ## Remove Dedup and Re-order columns
+  df_dp <- df_dp %>%
+    filter(fundingagency != "Dedup") %>%
+    select(fiscal_year,
+           operatingunit, countryname,
+           snu1, psnu, psnuuid, snuprioritization,
+           fundingagency, mech_code, mech_name, primepartner,
+           indicator, numeratordenom, indicatortype,
+           standardizeddisaggregate, ageasentered, sex,
+           statushiv, modality, otherdisaggregate, targets)
+
+  ## Summarise agencies geographies
+
+  df_dp %>% distinct(fundingagency, psnu, mech_code) %>%
+    arrange(fundingagency, psnu) %>%
+    prinf()
+
+  df_dp %>%
+    group_by(fundingagency) %>%
+    summarise(
+      psnus = n_distinct(psnu),
+      .groups = "drop")
+
+  df_dp %>%
+    select(psnu, fundingagency) %>%
+    distinct(fundingagency, psnu) %>%
+    arrange(fundingagency, psnu) %>%
+    gt()
+
+  df_dp_agencies_geo <- df_dp %>%
+    distinct(fundingagency, psnu) %>%
+    group_by(fundingagency) %>%
+    summarise(
+      psnus = paste(sort(psnu), collapse = ", "),
+      .groups = "drop")
+
+  df_dp_agencies_mechs <- df_dp %>%
+    distinct(fundingagency, mech_code, mech_name, primepartner) %>%
+    update_mechs() %>%
+    clean_mechs() %>%
+    clean_partners() %>%
+    group_by(fundingagency) %>%
+    arrange(mech_code) %>%
+    summarise(
+      mechanisms = paste(
+        paste0("[", mech_code, "] - ", mech_name),
+        collapse = ", "),
+      .groups = "drop")
+
+  df_dp_agencies_psnu_mechs <- df_dp %>%
+    distinct(fundingagency, psnu, mech_code, mech_name, primepartner) %>%
+    update_mechs() %>%
+    clean_mechs() %>%
+    clean_partners() %>%
+    group_by(fundingagency, psnu) %>%
+    arrange(mech_code) %>%
+    summarise(
+      mechanisms = paste(
+        paste0("[", mech_code, "] - ", mech_name, " - ", primepartner),
+        collapse = ", "),
+      .groups = "drop")
+
+  df_dp_agencies_psnu_mechs %>%
+    gt() %>%
+    gtsave(filename = file.path(dir_graphics, "Nigeria - FY23 Agency PSNU Mechnisms.png"))
+
+  # Summarize targets by Agency
+
+  df_dp_agency <- df_dp %>%
+    mutate(pop_type = case_when(
+      str_detect(standardizeddisaggregate, "KeyPop") ~ "KeyPop",
+      TRUE ~ NA_character_
+    )) %>%
+    group_by(fundingagency, indicator, numeratordenom,
+             pop_type, statushiv, modality, otherdisaggregate) %>%
+    summarise(targets = sum(targets, na.rm = TRUE), .groups = "drop") %>%
+    clean_agency() %>%
+    pivot_wider(names_from = fundingagency, values_from = targets) %>%
+    rowwise() %>%
+    mutate(
+      OU = sum(DOD, CDC, USAID, na.rm = T),
+      `DOD Share` = percent(DOD/OU, 1),
+      `CDC Share` = percent(CDC/OU, 1),
+      `USAID Share` = percent(USAID/OU, 1)
+    )
+
+
+
+
+
+
+
+## -----
+
 
   df_cop22 <- file_cop22_dp %>%
     read_dp() %>%

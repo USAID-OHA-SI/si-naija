@@ -122,7 +122,7 @@
     filter(str_detect(indicator, "^LAB|^HRF", negate = TRUE))
 
 
-  # Indicators containing Age/Sex desagg
+  # Indicators containing Age/Sex disagg
   df_msd_inds <- df_psnu %>%
     filter(str_detect(standardizeddisaggregate, "^Total.*tor$", negate = TRUE),
            str_detect(standardizeddisaggregate, "Age/Sex") |
@@ -150,11 +150,22 @@
 
   # Indicator Type x IM
   df_psnu %>%
-    filter(fiscal_year == curr_fy, indicator %in% inds,
+    filter(fiscal_year == curr_fy,
+           indicator %in% inds,
            str_detect(standardizeddisaggregate, "Total ")) %>%
     clean_indicator() %>%
+    clean_agency() %>%
     distinct(fundingagency, psnu, mech_code, indicator, indicatortype) %>%
     mutate(mech_code_dp = paste0(mech_code, "_", indicatortype))
+
+  df_agency_im <- df_psnu %>%
+    filter(fiscal_year == curr_fy) %>%
+    clean_indicator() %>%
+    clean_agency() %>%
+    distinct(fundingagency, psnu, mech_code) %>%
+    filter(!(str_detect(psnu, "_Mil") & fundingagency == "USAID")) %>%
+    arrange(psnu, mech_code)
+
 
   # IM Targets Share
   df_psnu_im <- df_psnu %>%
@@ -305,14 +316,15 @@
 
   df_dp_raw_clean %>% glimpse()
 
-  key_cols <- c("psnu","indicator_code", "age", "sex", "keypop", "datapacktarget")
+  key_cols <- c("psnu","indicator_code", "age", "sex", "keypop", "datapacktarget", "rollup")
 
   mechs <- df_dp_raw_clean %>%
     select(starts_with("dedup"), matches("^(1|2|3|4|5|6|7|8|9).")) %>%
     names()
 
   df_dp_raw_clean %>%
-    select(key_cols, mechs) %>% glimpse()
+    select(key_cols, mechs) %>%
+    glimpse()
 
   df_dp_raw_clean_share <- df_dp_raw_clean %>%
     select(key_cols, ends_with("_share")) %>% #glimpse()
@@ -328,160 +340,61 @@
                  names_sep = "_") %>%
       filter(!is.na(value))
 
+  ## Compare DP vs Rollup => All match
   df_dp_raw_clean_value %>%
+    mutate(check_values = datapacktarget == rollup) %>%
+    filter(!check_values)
+
+  ## Check DP IM Shares
+  df_dp_share_checks <- df_dp_raw_clean_share %>%
+    filter(mech_code != "dedup") %>%
+    mutate(psnu = str_trim(psnu, side = "both")) %>%
+    left_join(df_agency_im, by = c("psnu", "mech_code")) %>%
+    mutate_at(vars(ends_with(c("value", "share"))), as.numeric) %>%
+    group_by(psnu, indicator_code, age, sex, keypop) %>%
+    mutate(share_ttl = sum(share, na.rm = TRUE),
+           share_valid = share_ttl == 1.0000) %>%
+    ungroup() %>%
+    filter(share_valid != TRUE)
+
+  df_dp_share_checks %>%
+    distinct(share_ttl) %>%
+    arrange(share_ttl) %>%
+    prinf()
+
+  df_dp_share_checks %>%
+    filter(share_ttl < .9)
+
+  df_dp_checks <- df_dp_raw_clean_value %>%
     left_join(df_dp_raw_clean_share) %>%
+    mutate(psnu = str_trim(psnu, side = "both")) %>%
+    left_join(df_agency_im, by = c("psnu", "mech_code")) %>%
     mutate_at(vars(ends_with(c("value", "share"))), as.numeric) %>%
     filter(mech_code != "dedup") %>%
-    group_by(psnu, indicator_code) %>%
-    mutate(im_share = value / sum(value),
-           im_share_check = share == im_share) %>%
+    group_by(psnu, indicator_code, age, sex, keypop) %>%
+    mutate(share_ttl = sum(share, na.rm = TRUE),
+           share_valid = share_ttl == 1.0000) %>%
     ungroup()
 
+  df_dp_checks_errors <- df_dp_checks %>%
+    filter(share_valid != TRUE)
+
+  df_dp_checks %>%
+    distinct(share_ttl) %>%
+    arrange(share_ttl) %>%
+    prinf()
+
+  df_dp_checks %>% filter(share_ttl < .99)
+
+  # Check usaid mechs
+  df_dp_checks %>%
+    filter(mech_code %in% (df_agency_im %>%
+             filter(fundingagency == "USAID") %>%
+             pull(mech_code) %>%
+             unique())) %>%
+    distinct(psnu)
 
 
 
-
-  # df_dp <- df_dp_raw %>%
-  #   reshape_dp() %>%
-  #   convert_dedups()
-  #
-  # df_dp %>% agg_dp(psnu_lvl = TRUE)
-
-  df_dp %>%
-    filter(!is.na(share)) %>%
-    group_by(psnu, indicator_code, indicatortype) %>%
-    mutate(share_ttl = sum(share, na.rm = TRUE)) %>%
-    ungroup()
-
-
-  # Custom
-  df_opu <- file_opu_dp %>%
-    read_excel(sheet = "PSNUxIM",
-               skip = 13,
-               col_types = "text",
-               .name_repair = "unique")
-
-
-  df_opu %>% glimpse()
-
-  df_opu_rev <- df_opu %>%
-    select(-starts_with("...")) %>% #glimpse()
-    rename_with(~ str_replace(., "...\\d{3}$", "_value")) %>%
-    rename_with(~ str_replace(., "...\\d{1,2}$", "_share")) %>%
-    clean_name()
-
-  df_opu_rev %>% glimpse()
-
-
-
-  # ----
-
-
-
-  df_opu <- return_latest(
-      folderpath = paste0(si_path(), "/../PEPFAR/COUNTRIES/Nigeria/FY22 - OPU"),
-      pattern = "OPU.*_Nigeria_\\d{8}.xlsx") %>%
-    read_excel(sheet = "PSNUxIM",
-               skip = 13,
-               col_types = "text",
-               .name_repair = "unique")
-
-  df_opu <- df_opu %>%
-    select(-starts_with("...")) %>%
-    rename_with(str_to_lower) %>%
-    rename_with(~str_replace(., "...[:digit:]{3}$", "_value")) %>%
-    rename_with(~str_replace(., "...[:digit:]{1,2}$", "_share")) %>%
-    tameDP::reshape_dp() %>%
-    tameDP::convert_dedups()
-
-  # Summary by PSNU
-  df_opu_psnu <- df_opu %>%
-    tameDP::agg_dp(psnu_lvl = T) %>%
-    tameDP::clean_indicators()
-
-  # Summary by
-  df_opu_im <- df_opu %>%
-    tameDP::agg_dp(psnu_lvl = F) %>%
-    tameDP::clean_indicators()
-
-
-  df_opu_usaid <- df_opu_im %>%
-    filter(indicator %in% inds) %>%
-    group_by(mech_code, indicator) %>%
-    summarise(across(targets, sum, na.rm = T), .groups = "drop")
-
-
-  df_nga <- df_psnu_im %>%
-    full_join(df_opu_usaid, by = c("indicator", "mech_code")) %>%
-    rename(datim = targets.x, revised = targets.y) %>%
-    filter(fundingagency == "USAID") %>%
-    select(-c(fundingagency, fiscal_year)) %>%
-    arrange(mech_code, indicator) %>%
-    pivot_wider(names_from = indicator, values_from = c(datim, revised)) %>%
-    arrange(mech_code)
-
-
-
-
-
-
-
-# OLD
-
-  names(df_opu) %>% sort()
-
-  key_cols <-
-
-  mechs <- df_opu %>%
-    select(starts_with("dedup"),
-           matches(glue("^({paste(1:9, collapse='|')})."))) %>%
-    names()
-
-  df_opu <- df_opu %>%
-
-    pivot_longer(cols = matches("\\d"),
-                 names_to = "mechanism_id",
-                 values_to = "target_share") %>%
-    clean_names() %>%
-    separate(col = mechanism_id,
-             into = c("mech_code", "indicatortype", "col_idx"),
-             sep = "[^[:alnum:]]+",
-             remove = F) %>%
-    select(-c(mechanism_id, col_idx))
-
-  df_opu <- df_opu %>%
-    mutate(psnu = str_extract(psnu, "(?<=>).*"),
-           psnu = str_remove(psnu, " \\[.*"),
-           id = str_extract(id, "(?<=\\]).*"),
-           id = str_remove(id, "\\].*"),
-           id = str_remove(id, "\\[")) %>%
-    rename(psnuuid = id) %>%
-    relocate(psnuuid, .before = 1)
-
-  df_opu %>% distinct(indicator_code)
-
-  df_opu <- df_opu %>%
-    mutate(
-      indicator_code = str_remove(indicator_code, ".T$"),
-      indicator = str_extract(indicator_code, "[^\\.]+"),
-      numeratordenom = ifelse(str_detect(indicator_code, "\\.D\\."), "D", "N"),
-      statushiv = str_extract(indicator_code, "(?<=\\.)(Neg|Pos|Unk)(?=\\.)"),
-      statushiv = recode(statushiv,  "Neg" = "Negative" , "Pos" = "Positive", "Unk" = "Unknown"),
-      otherdisaggregate = str_extract(indicator_code, "(Act|Grad|Prev|DREAMS|Already|New\\.Neg|New\\.Pos|New|KnownNeg|KnownPos|Routine|\\.S(?=\\.)|PE)"),
-      otherdisaggregate = str_remove(otherdisaggregate, "\\."))
-
-  df_opu_im <- df_opu %>%
-    filter(indicator %in% inds) %>%
-    mutate(data_pack_target = as.integer(data_pack_target)) %>%
-    group_by(mech_code, indicator) %>%
-    summarise(data_pack_target = sum(data_pack_target, na.rm = T)) %>%
-    ungroup()
-
-  df_nga <- df_opu_im %>%
-    left_join(df_psnu_im, by = c("indicator", "mech_code")) %>%
-    filter(fundingagency == "USAID") %>%
-    select(-c(fundingagency, fiscal_year)) %>%
-    pivot_wider(names_from = indicator, values_from = c(targets, data_pack_target)) %>%
-    arrange(mech_code)
 
 

@@ -30,6 +30,20 @@ connect_list <- function(items, connector = "-") {
     paste(collapse = connector)
 }
 
+#' @title Datim Login
+#' @description This is wrap around datimutil::loginToDATIM()
+#'
+datim_session <- function() {
+
+  #secrets <- Sys.getenv("SECRETS_FOLDER") %>% paste0(., "datim.json")
+  #datimutils::loginToDATIM()
+
+  # OR
+  datimutils::loginToDATIM(username = datim_user(),
+                           password = datim_pwd(),
+                           base_url = "https://www.datim.org/")
+}
+
 #' @title Read DP
 #'
 #'
