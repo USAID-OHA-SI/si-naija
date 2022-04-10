@@ -44,10 +44,92 @@ datim_session <- function() {
                            base_url = "https://www.datim.org/")
 }
 
+
+#' @title Extract MSD Indicators
+#'
+#'
+msd_indicators <- function(.df_msd, fy) {
+  .df_msd %>%
+    filter(fiscal_year == fy) %>%
+    select(indicator, numeratordenom, indicatortype,
+           disaggregate, standardizeddisaggregate,
+           #ageasentered, sex,
+           statushiv, statustb, statuscx,
+           statustx = hiv_treatment_status,
+           otherdisaggregate, otherdisaggregate_sub, modality, source_name) %>%
+    distinct() %>%
+    #arrange(indicator, disaggregate, ageasentered, sex) %>%
+    mutate(fiscal_year = fy) %>%
+    relocate(fiscal_year, .before = 1) %>%
+    arrange(indicator, disaggregate) %>%
+    distinct()
+}
+
+#' @title Extract MSD Mechanisms
+#'
+#'
+msd_mechanisms <- function(.df_msd, fy, ...) {
+  .df_msd %>%
+    filter(fiscal_year %in% fy, fundingagency != "Dedup") %>%
+    distinct(fiscal_year, fundingagency, mech_code, mech_name, primepartner, ...) %>%
+    select(fiscal_year, fundingagency, mech_code, mech_name, primepartner, ...) %>%
+    arrange(fundingagency, mech_code) %>%
+    update_mechs() %>%
+    clean_mechs() %>%
+    filter(str_detect(mech_name, "Placeholder", negate = TRUE)) %>%
+    clean_partners() %>%
+    #mutate(fiscal_year = fy) %>%
+    relocate(fiscal_year, .before = 1)
+}
+
+
+#' @title Update IM Transitions
+#'
+#'
+msd_im_transition <- function(.df_msd, .df_mechs, ...) {
+
+  args <- unlist(list(...))
+
+  .df_msd %>%
+  left_join(.df_mechs, c("mech_code", args)) %>%
+    mutate(mech_code = case_when(
+      mech_code_new != mech_code ~ mech_code_new,
+      mech_code == "17747" ~ "70255",
+      TRUE ~ mech_code
+    )) %>%
+    select(-mech_code_new)
+}
+
+
+#' @title Map MSD to DP Indicators
+#'
+msd_to_dp_indicators <- function(.df_msd, .df_de_coc) {
+  .df_msd %>%
+    left_join(.df_de_coc,
+              by = c("indicator", "numeratordenom",
+                     "indicatortype" = "indicator_type",
+                     "disaggregate", "ageasentered", "sex")) %>%
+    filter(!is.na(indicator_code)) %>%
+    mutate(
+      keypop = case_when(
+        str_detect(indicator_code, "KP_.*.T|.*.KP.T") ~ otherdisaggregate,
+        TRUE ~ NA_character_
+      ),
+      ageasentered = case_when(
+        indicator_code == "PMTCT_EID.N.2.T" ~ NA_character_,
+        indicator_code %in% c("GEND_GBV.PE.T", "GEND_GBV.S.T") ~ NA_character_,
+        TRUE ~ ageasentered
+      ),
+      sex = case_when(
+        indicator_code %in% c("GEND_GBV.PE.T", "GEND_GBV.S.T") ~ NA_character_,
+        TRUE ~ sex
+      ))
+}
+
 #' @title Read DP
 #'
 #'
-read_dp <- function(filename,
+dp_read <- function(filename,
                     sheet = "PSNUxIM",
                     header = 14,
                     repair = "unique") {
@@ -60,17 +142,231 @@ read_dp <- function(filename,
   )
 }
 
+#' @title DP Write data to file
+#'
+#'
+dp_write <- function(.df_out, file_in, file_out) {
+
+  # Update files
+  wb_dp <- loadWorkbook(file = file_in)
+
+  #file_out <- str_replace(file_in, ".xlsx", paste0(curr_date(), ".xlsx"))
+
+  writeData(
+    wb = wb_dp,
+    sheet = "PSNUxIM",
+    x = .df_out,
+    startCol = "I",
+    startRow = 15,
+    colNames = FALSE
+  )
+
+  saveWorkbook(
+    wb = wb_dp,
+    file = file_out,
+    overwrite = TRUE
+  )
+}
+
+#' @title DP Clean Raw data
+#'
+#'
+dp_clean <- function(.df_raw) {
+
+  .df_raw <- .df_raw %>%
+    select(-starts_with("...")) %>%
+    rename_with(.cols = everything(),
+                .fn = ~str_replace(., "...[:digit:]{3}$", "_value")) %>%
+    rename_with(.cols = everything(),
+                .fn = ~str_replace(., "...[:digit:]{1,2}$", "_share"))
+
+  .df_raw <- .df_raw %>%
+    mutate(snu = str_extract(PSNU, ".*(?=\\[#)"),
+           snu = str_trim(snu, side = "both")) %>%
+    relocate(snu, .before = 1) %>%
+    clean_names()
+
+  return(.df_raw)
+}
+
+#' @title DP Reshape
+#'
+#'
+dp_reshape <- function(.df_clean) {
+
+  .df_clean <- df_dp_psnu_im %>%
+    select(PSNU:Rollup, ends_with("dsd_share")) %>%
+    pivot_longer(cols = ends_with("share"),
+                 names_to = "mech_code",
+                 values_to = "shares")
+
+  df_dp_psnu_im <- df_dp_psnu_im %>%
+    mutate(mech_code = str_remove(mech_code, "_dsd_share"))
+}
+
+#' @title Map DP Indicators
+#'
+#'
+dp_indicators <- function(fy = 2023, support = "DSD") {
+
+  datapackr::cop22_map_DataPack_DATIM_DEs_COCs %>%
+    janitor::clean_names() %>%
+    filter(fy == fy,
+           dataset == "mer",
+           support_type == support,
+           targets_results == "targets") %>%
+    select(indicator_code, indicator = technical_area,
+           numeratordenom = numerator_denominator,
+           indicator_type = support_type, disaggregate = disagg_type,
+           ageasentered = valid_ages_name, sex = valid_sexes_name,
+           keypop = valid_kps_name, statushiv = resultstatus,
+           modality = hts_modality) %>%
+    distinct() %>%
+    mutate(
+      numeratordenom = case_when(
+        numeratordenom == "Numerator" ~ "N",
+        numeratordenom == "Denominator" ~ "D",
+        TRUE ~ NA_character_
+      ),
+      disaggregate = case_when(
+        str_detect(indicator_code, ".*.SNS.T$|.*.SNS.*T$") ~ "SNS/Age/Sex/Result",
+        str_detect(indicator_code, ".*.SNSCom.T$|.*.SNSCom.*T$") ~ "SNSMod/Age/Sex/Result",
+        indicator_code == "OVC_HIVSTAT.T" ~ "Total Numerator",
+        indicator_code == "CXCA_SCRN.T" ~ "Age/Sex/HIVStatus/ScreenResult/ScreenVisitType",
+        indicator_code == "GEND_GBV.PE.T" ~ "Age/Sex/ViolenceType",
+        indicator_code == "GEND_GBV.S.T" ~ "Age/Sex/ViolenceType",
+        indicator_code == "HTS_SELF.T" ~ "Age/Sex/HIVSelfTest",
+        indicator_code == "HTS_SELF.KP.T" ~ "KeyPop/HIVSelfTest",
+        str_detect(indicator_code, "HTS_.*.KP.T") ~ "KeyPop/HIVStatus",
+        str_detect(indicator_code, "HTS_INDEX_COM*.T") ~ "IndexMod/Age/Sex/Result",
+        str_detect(indicator_code, "HTS_INDEX_FAC*.T") ~ "Index/Age/Sex/Result",
+        #HTS_TST & RECENT
+        str_detect(indicator_code, "TX_PVLS.*.KP.T") ~ "KeyPop/Indication/HIVStatus",
+        str_detect(indicator_code, "TX_TB.D.*.T") ~ "Age Aggregated/Sex/TBScreen/NewExistingART/HIVStatus",
+        str_detect(indicator_code, "PrEP_NEW.KP.T") ~ "KeyPopAbr",
+        str_detect(indicator_code, "TB_ART.*.T") ~ "Age/Sex/NewExistingArt/HIVStatus",
+        str_detect(indicator_code, "TB_ART.*.T|TB_PREV.*.T") ~ "Age/Sex/NewExistingArt/HIVStatus",
+        str_detect(indicator_code, "TB_STAT.D.T") ~ "Age/Sex",
+        str_detect(indicator_code, "TB_STAT.N.T") ~ "Age/Sex/NewExistingArt/HIVStatus",
+        TRUE ~ disaggregate
+      ),
+      modality = case_when(
+        str_detect(indicator_code, ".*.SNS.T$|.*.SNS.*T$") ~ "SNS",
+        str_detect(indicator_code, ".*.SNSCom.T$|.*.SNSCom.*T$") ~ "SNSMod",
+        str_detect(modality, "^Facility.*") ~ str_remove(modality, "^Facility - "),
+        str_detect(modality, "^Community*") ~ paste0(str_remove(modality, "^Community - "), "Mod"),
+        TRUE ~ modality
+      ),
+      modality = str_remove(modality, " Services")
+    )
+}
+
+
+#' @title Map DP Indicators
+#'
+#'
+dp_map_indicators <- function(.dp_raw) {
+  .dp_raw %>%
+    select(indicator_code, Age, Sex, KeyPop) %>%
+    distinct() %>%
+    rename_with(.fn = tolower) %>%
+    mutate(indicator_target = indicator_code) %>%
+    clean_indicators() %>%
+    mutate(
+      modality = case_when(
+        str_detect(indicator_target, "HTS_RECENT.*.T") ~
+          str_extract(indicator_target, "(?<=HTS_RECENT\\.).*(?=\\.T)"),
+        TRUE ~ modality
+      ),
+      modality = str_replace(modality, "Com", "Mod"),
+      modality = str_replace(modality, "Fac", ""),
+      modality = na_if(modality, "KP"),
+      modality = recode(modality,
+                        "EW" = "Emergency Ward",
+                        "Maln" = "Malnutrition",
+                        "Other" = "OtherPITC",
+                        "Peds" = "Pediatric",
+                        "PMTCT_STAT" = "PMTCT ANC",
+                        "PostANC1" = "Post ANC1",
+                        "STI" = "STI Clinic",
+                        "TB" = "TBClinic")
+    ) %>%
+    select(indicator_target, indicator, numeratordenom,
+           standardizeddisaggregate, statushiv,
+           modality, otherdisaggregate) %>%
+    distinct() %>%
+    mutate(
+      indicator = case_when(
+        indicator == "PREP_NEW" ~ "PrEP_NEW",
+        indicator == "PREP_CURR" ~ "PrEP_CURR",
+        indicator == "PREP_CT" ~ "PrEP_CT",
+        TRUE ~ indicator
+      ),
+      modality = case_when(
+        str_detect(indicator_target, "HTS_INDEX_COM.*.T") ~ "IndexMod",
+        str_detect(indicator_target, "HTS_INDEX_FAC.*.T") ~ "Index",
+        TRUE ~ modality
+      ),
+      otherdisaggregate = case_when(
+        #indicator_target == "CXCA_SCRN.T" ~ "Cervical Cancer Screened - First Time, Cervical Cancer - Positive",
+        indicator_target == "GEND_GBV.PE.T" ~ "Physical and/or Emotional Violence",
+        indicator_target == "GEND_GBV.S.T" ~ "Sexual Violence Post-Rape Care",
+        indicator_target == "OVC_SERV.Active.T" ~ "Active",
+        indicator_target == "OVC_SERV.Grad.T" ~ "Graduated",
+        indicator_target == "OVC_SERV.Prev.T" ~ NA_character_,
+        str_detect(indicator_target, "HTS_INDEX_.*[.]New[.].*.T") ~ "Newly Identified",
+        str_detect(indicator_target, "HTS_TST[.].*[.]T") ~ "Newly Identified",
+        str_detect(indicator_target, "PMTCT_STAT.N.New.*[.]T") ~ "Newly Identified",
+        str_detect(indicator_target, "PMTCT_STAT.N.Known.*[.]T") ~ "Known at Entry",
+        str_detect(indicator_target, "TX_TB.D.Already.*.T") ~ paste0("TB Screen - ", statushiv, ", Life-Long ART, Already"),
+        str_detect(indicator_target, "TX_TB.D.New.*.T") ~ paste0("TB Screen - ", statushiv, ", Life-Long ART, New"),
+        str_detect(indicator_target, "TB_STAT.N.New.*[.]T") ~ "Newly Identified",
+        str_detect(indicator_target, "TB_STAT.N.Known.*[.]T") ~ "Known at Entry",
+        TRUE ~ otherdisaggregate
+      ),
+      statushiv = case_when(
+        indicator_target == "OVC_HIVSTAT.T" ~ "Unknown",
+        str_detect(indicator_target, "CXCA_SCRN|TX_PVLS|TX_NEW|TX_CURR|TX_TB|TB_ART|TB_PREV|HTS_RECENT|PMTCT_ART") ~ "Positive",
+        TRUE ~ statushiv
+      ),
+      standardizeddisaggregate = case_when(
+        indicator_target == "CXCA_SCRN.T" ~ "Age/Sex/HIVStatus/ScreenResult/ScreenVisitType",
+        indicator_target == "TB_STAT.D.T" ~ "Age/Sex",
+        indicator_target == "HTS_SELF.T" ~ "Age/Sex/HIVSelfTest",
+        indicator_target == "HTS_SELF.KP.T" ~ "KeyPop/HIVSelfTest",
+        str_detect(indicator_target, "HTS_INDEX_.*.T") ~ "4:Age/Sex/Result",
+        indicator_target == "HTS_RECENT.KP.T" ~ "KeyPop/RTRI/HIVStatus",
+        str_detect(indicator_target, "HTS_RECENT.") ~ "Modality/Age/Sex/RTRI/HIVStatus",
+        str_detect(indicator_target, "GEND_GBV.*.T") ~ "Age/Sex/ViolenceType",
+        str_detect(indicator_target, "HTS_TST.*.KP.T") ~ "KeyPop/HIVStatus",
+        str_detect(indicator_target, "TX_PVLS.*.KP.T") ~ "KeyPop/Indication/HIVStatus",
+        str_detect(indicator_target, "TX_TB.D.*.T") ~ "Age Aggregated/Sex/TBScreen/NewExistingART/HIVStatus",
+        str_detect(indicator_target, "PrEP_NEW.KP.T") ~ "KeyPopAbr",
+        str_detect(indicator_target, "TB_ART.*.T") ~ "Age/Sex/NewExistingArt/HIVStatus",
+        str_detect(indicator_target, "TB_ART.*.T|TB_PREV.*.T") ~ "Age/Sex/NewExistingArt/HIVStatus",
+        str_detect(indicator_target, "TB_STAT.D.T") ~ "Age/Sex",
+        str_detect(indicator_target, "TB_STAT.N.T") ~ "Age/Sex/NewExistingArt/HIVStatus",
+        TRUE ~ standardizeddisaggregate
+      )
+    ) %>%
+    filter(
+      indicator != "HTS_TST_POS",
+      !(indicator == "HTS_TST" & str_detect(indicator_target, "HTS_TST", negate = T))
+    )
+}
+
 #' @title Extract DP Target Values
 #'
 #'
-df_extract_values <- function(.df_cop) {
+dp_extract_values <- function(.df_cop) {
   .df_cop %>%
-    select(-ends_with("share")) %>%
+    select(psnu:rollup, -ends_with("share")) %>%
     rename_with(.cols = ends_with("value"),
-                .fn = ~str_remove(., "_value"))# %>%
-  pivot_longer(cols = ends_with("DSD"),
-               names_to = "Attribute",
-               values_to = "Value")
+                .fn = ~str_remove(., "_value")) %>%
+  pivot_longer(cols = ends_with("dsd"),
+               names_to = "attribute",
+               values_to = "value") %>%
+    mutate(attribute = str_extract(attribute, "\\d+"))
 }
 
 #' @title Extract DP Target Shares
@@ -78,12 +374,13 @@ df_extract_values <- function(.df_cop) {
 #'
 dp_extract_shares <- function(.df_cop) {
   .df_cop %>%
-    select(PSNU:Rollup, ends_with("share")) %>%
+    select(psnu:rollup, ends_with("share")) %>%
     rename_with(.cols = ends_with("share"),
                 .fn = ~str_remove(., "_share")) %>%
-    pivot_longer(cols = ends_with("DSD"),
-                 names_to = "Attribute",
-                 values_to = "Share")
+    pivot_longer(cols = ends_with("dsd"),
+                 names_to = "attribute",
+                 values_to = "share") %>%
+    mutate(attribute = str_extract(attribute, "\\d+"))
 }
 
 #' @title Extract DP Target Shares/Values
@@ -905,6 +1202,39 @@ identify_pds <- function(df_msd,
   return(pds)
 }
 
+
+#' @title Get lag of current reporting period
+#'
+#'
+lag_pd <- function(pd, n = 2, type = "full") {
+
+  if (type != "full")
+    stop("INVALID INPUT - Period type not currently supported")
+
+  # Fiscal year
+  fy <- pd %>%
+    str_sub(3, 4) %>%
+    as.integer()
+
+  # Rererence FY & Quaters
+  valid_qtrs <- c(1:4)
+  lookup_qtrs <- rep(valid_qtrs, times = n)
+  lookup_fys <- rep(c(fy-1, fy), times = 1, each = length(valid_qtrs))
+
+  #
+  curr_qtr <- pd %>%
+    str_sub(-1) %>%
+    as.integer()
+
+  idx_qtr <- match(curr_qtr, valid_qtrs) + length(valid_qtrs)
+
+  lag_qtr <- lookup_qtrs[idx_qtr - n]
+  lag_fy <- lookup_fys[idx_qtr - n]
+
+  pd <- paste0("FY", lag_fy, "Q", lag_qtr)
+
+  return(pd)
+}
 
 #' @title States Prioritization
 #'

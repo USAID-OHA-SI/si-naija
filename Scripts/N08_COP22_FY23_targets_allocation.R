@@ -3,12 +3,13 @@
 ##  PURPOSE: COP22 / FY23 Targets Allocation
 ##  LICENCE: MIT
 ##  DATE:    2022-03-17
-##  UPDATED: 2022-03-31
+##  UPDATED: 2022-04-08
 
 ## Libraries ----
 
   library(tidyverse)
   library(readxl)
+  library(openxlsx)
   library(gophr)
   library(glamr)
   library(tameDP)
@@ -34,7 +35,7 @@
   dir_cop21 <- "../../PEPFAR/COUNTRIES/Nigeria/COPs/COP21"
   dir_cop22 <- "../../PEPFAR/COUNTRIES/Nigeria/COPs/COP22"
 
-  dir_cop22 %>% open_path()
+  #dir_cop22 %>% open_path()
 
   # Files ----
 
@@ -47,17 +48,23 @@
   file_subnat <- dir_merdata %>%
     glamr::return_latest(pattern = "NAT_SUBNAT_FY15")
 
-  file_cop21_dp <- dir_cop21 %>%
-    return_latest("COP21 Data Pack .*.xlsx$")
+  file_cop22_mechs <- dir_cop22 %>%
+    file.path("Data") %>%
+    return_latest("FY22 Mechanisms flags.xlsx")
 
   file_cop22_dp <- dir_cop22 %>%
-    return_latest("Data Pack_Nigeria_\\d{8}.*.xlsx$")
+    return_latest("Nigeria_datapack_\\d{8}.*.xlsx$")
 
   # Params ----
 
   cntry <- "Nigeria"
 
   ou_uid <- get_ouuid(cntry)
+
+  ou_uid <- datapackr::cop22_valid_PSNUs %>%
+    filter(ou == cntry) %>%
+    pull(country_uid) %>%
+    first()
 
   agency <- "USAID"
 
@@ -68,10 +75,25 @@
     str_replace("FY", "20") %>%
     as.numeric()
 
+  # Previous Fiscal Year
   prev_fy <- curr_fy - 1
 
   # Current COP
   cop_year <- curr_fy
+  cop_fy <- curr_fy + 1
+
+  # Mechanisms
+
+  # KeyPop
+  kp_mechs <- c(81860, 81861)
+
+  # Closing in FY22: Exclude from future planning
+  mechs_closing <- c(100222, # Epic ()
+                     14505, # SIDHAS (FY21Q3)
+                     17747, # DOD Mech - Closed last FY
+                     18655, # TO1
+                     81856, # TO2
+                     81857) # TO3
 
   # indicators
   inds <- c("HTS_TST", "HTS_TST_POS", "TX_NEW", "TX_CURR", "TX_PVLS", "TX_PVLS_D")
@@ -88,18 +110,19 @@
     "KeyPop/HIVStatus"
   )
 
-  # Age bands
-  cop_age_labels <- list(peds = "<15",
-                         adolescent = "15-19",
-                         young = "20-24",
-                         adult = "25+")
+  # Age bands labels
+  cop_age_labels <- c(peds = "<15",
+                      adolescent = "15-19",
+                      young = "20-24",
+                      adult = "25+")
 
-  cop_age_values <- list(peds = c("<01", "01-04", "05-09", "10-14"),
-                         adolescent = c("15-19"),
-                         young = c("20-24"),
-                         adult = c("25-24", "25-29", "30-34",
-                                   "35-39", "40-44", "45-49",
-                                   "50-54", "55-59", "60+"))
+  # Age bands groups
+  cop_age_values <- c(peds = c("<01", "01-04", "05-09", "10-14"),
+                      adolescent = c("15-19"),
+                      young = c("20-24"),
+                      adult = c("25-24", "25-29", "30-34",
+                                "35-39", "40-44", "45-49",
+                                "50-54", "55-59", "60+"))
 
 
 # FUNCTION ----
@@ -126,16 +149,178 @@
 
   df_psnu <- file_psnu_im %>% read_msd()
 
-  df_msd_indicators <- df_psnu %>%
-    filter(str_detect(standardizeddisaggregate, "^Total.*tor$", negate = TRUE),
-           str_detect(standardizeddisaggregate, "Age/Sex")) %>%
-    select(indicator, numeratordenom, indicatortype,
-           disaggregate, standardizeddisaggregate,
-           ageasentered, sex,
-           statushiv, statustb, statuscx,
-           statustx = hiv_treatment_status,
-           otherdisaggregate, modality, source_name) %>%
+  ## Save look up tables
+  wb_lookups <- createWorkbook()
+
+  ## MSD Indicators ----
+  df_msd_indicators_fy21 <- df_psnu %>% msd_indicators(fy = prev_fy)
+
+  addWorksheet(wb_lookups, sheetName = "FY21 MSD Indicators")
+
+  writeDataTable(wb_lookups,
+                 sheet = "FY21 MSD Indicators",
+                 x = df_msd_indicators_fy21)
+
+  df_msd_indicators_fy22 <- df_psnu %>% msd_indicators(fy = curr_fy)
+
+  addWorksheet(wb_lookups, sheetName = "FY22 MSD Indicators")
+
+  writeDataTable(wb_lookups,
+                 sheet = "FY22 MSD Indicators",
+                 x = df_msd_indicators_fy22)
+
+  ## MSD Mechanisms ----
+
+  ## Valid mech psnu coverage
+  df_mech_flags <- file_cop22_mechs %>%
+    read_excel(sheet = 1)
+
+  psnu_usaid <- df_mech_flags  %>%
+    filter(fundingagency == "USAID") %>%
+    distinct(psnu)
+
+  df_mech_flags <- df_mech_flags %>%
+    filter(valid == 1) %>%
+    select(psnu, mech_code,
+           mech_code_new = mech_code_fy23)
+
+  # List of Mechanisms
+  df_msd_mechanisms <- df_psnu %>%
+    msd_mechanisms(fy = curr_fy) %>%
+    mutate(closing = case_when(
+      mech_code %in% mechs_closing ~ 1,
+      TRUE ~ 0
+    ))
+
+  df_msd_mechanisms_fy21 <- df_psnu %>%
+    msd_mechanisms(fy = prev_fy) %>%
+    mutate(closing = case_when(
+      mech_code %in% mechs_closing ~ 1,
+      TRUE ~ 0
+    ))
+
+  df_msd_mechanisms <- df_msd_mechanisms %>%
+    bind_rows(df_msd_mechanisms_fy21, .) %>%
+    select(-fiscal_year) %>%
     distinct()
+
+  addWorksheet(wb_lookups, sheetName = "FY22 MSD Mechanisms")
+
+  writeDataTable(wb_lookups,
+                 sheet = "FY22 MSD Mechanisms",
+                 x = df_msd_mechanisms)
+
+  ## MSD PSNU Mechanisms ----
+  df_msd_psnu_mechs <- df_psnu %>%
+    msd_mechanisms(fy = c(prev_fy, curr_fy), psnu) %>%
+    relocate(psnu, .after = 1) %>%
+    mutate(
+      closing = case_when(
+        mech_code %in% mechs_closing ~ 1,
+        TRUE ~ 0
+      ),
+      fundingagency = case_when(
+        psnu == "Lagos" ~ "HHS/CDC & USAID",
+        TRUE ~ fundingagency
+      )
+    )
+
+  # FY23 - Look up mechanisms
+  df_msd_psnu_mechs <- df_mech_flags %>%
+    left_join(df_msd_mechanisms, by = "mech_code") %>%
+    select(fiscal_year, psnu, fundingagency,
+           mech_code, mech_name, primepartner) %>%
+    mutate(
+      closing = case_when(
+        mech_code %in% mechs_closing ~ 1,
+        TRUE ~ 0
+      ),
+      fundingagency = case_when(
+        psnu == "Lagos" ~ "HHS/CDC & USAID",
+        TRUE ~ fundingagency
+      )
+    )
+
+  ## OU Gen Pop & KP Mechanisms
+  kp_mechs <- c(81860, 81861)
+
+  gp_mechs <- df_msd_mechanisms %>%
+    filter(fundingagency == "USAID",
+           closing != 1,
+           mech_code %ni% kp_mechs) %>%
+    pull(mech_code)
+
+  # NON USAID Mechs
+  non_usaid_mechs <- df_msd_mechanisms %>%
+    filter(fundingagency != "USAID") %>%
+    distinct(mech_code) %>%
+    pull()
+
+  # KP Disaggs
+  kp_disaggs <- c("FSW", "MSM",
+                  "People in prisons and other enclosed settings",
+                  "PWID", "TG")
+
+  # Gen Pop
+  df_msd_psnu_mechs_genpop <- df_msd_psnu_mechs %>%
+    filter(closing != 1 & mech_code %ni% kp_mechs) %>%
+    group_by(fundingagency, psnu) %>%
+    mutate(
+      share = case_when(
+        psnu == "Lagos" & mech_code %in% non_usaid_mechs ~ 1 / 2,
+        psnu == "Lagos" & mech_code %ni% non_usaid_mechs ~ (1 / 2 / (n_distinct(mech_code) - 1)),
+        TRUE ~ 1 / n_distinct(mech_code)
+      )) %>%
+    ungroup()
+
+  # KP Only
+  df_msd_psnu_mechs_kp <- df_msd_psnu_mechs %>%
+    filter(closing != 1 & mech_code %in% kp_mechs) %>%
+    group_by(fundingagency, psnu) %>%
+    mutate(share = 1 / n_distinct(mech_code)) %>%
+    ungroup() %>%
+    bind_rows(df_msd_psnu_mechs_share, .)
+
+  # Add closing mechs
+  df_msd_psnu_mechs <- df_msd_psnu_mechs %>%
+    filter(closing == 1) %>%
+    bind_rows(df_msd_psnu_mechs_share, .) %>%
+    arrange(fundingagency, psnu, mech_code)
+
+  addWorksheet(wb_lookups, sheetName = "FY22 MSD PSNU Mechanisms")
+
+  writeDataTable(wb_lookups,
+                 sheet = "FY22 MSD PSNU Mechanisms",
+                 x = df_msd_psnu_mechs)
+
+  ## ## MSD PSNU Mechanisms Shares ----
+  # NOTE: RISE - 81858 Does some Military Community Work?
+  df_msd_psnu_mechs_share <- df_msd_psnu_mechs %>%
+    partners_label() %>%
+    select(-c(mech_name, primepartner, closing)) %>%
+    pivot_wider(
+      names_from = c(mech_code, partner),
+      #names_from = mech_code,
+      names_sort = TRUE,
+      values_from = share) %>%
+    arrange(fundingagency, psnu)
+
+  addWorksheet(wb_lookups, sheetName = "FY22 MSD PSNU Mechanisms Share")
+
+  writeDataTable(wb_lookups,
+                 sheet = "FY22 MSD PSNU Mechanisms Share",
+                 x = df_msd_psnu_mechs_share)
+
+  # Save lookup data
+  file_lookup = file.path(
+    dir_dataout,
+    paste0("DP MSD Lookups - ", curr_date(), ".xlsx"))
+
+  saveWorkbook(wb = wb_lookups,
+               file = file_lookup,
+               overwrite = TRUE)
+
+  file_lookup %>% open_path()
 
   # MSD - Sites x IM ----
 
@@ -145,7 +330,15 @@
   df_sites %>% distinct(fundingagency)
   df_sites %>% distinct(psnu) %>% prinf()
 
-  # FY22 Targets
+  # USAID Military Facility - RISE 81858 [Z1raiKJH6yv]
+  df_sites %>%
+    filter(fiscal_year == curr_fy,
+           fundingagency != "Dedup",
+           orgunituid == "Z1raiKJH6yv") %>%
+    distinct(orgunituid, sitename, typemilitary, mech_code)
+
+  # CASCADE ----
+  # FY22 Targets ----
   df_obs_cascade1a <- df_psnu %>%
     filter(fiscal_year == curr_fy) %>%
     clean_indicator() %>%
@@ -182,7 +375,6 @@
     clean_indicator() %>%
     filter(
       indicator %in% inds_cascade,
-      #standardizeddisaggregate == "Total Numerator"
       standardizeddisaggregate %in% disaggs_cascade,
       !is.na(ageasentered)
     ) %>%
@@ -208,50 +400,356 @@
                 values_from = c(observed, planned)) %>%
     arrange(psnu, ageasentered, sex)
 
-  # PMTCT
-  df_obs_pmtct <- df_psnu %>%
-    filter(fiscal_year %in% c(prev_fy, curr_fy)) %>%
-    clean_indicator() %>%
-    filter(indicator %in% inds_cascade,
-           standardizeddisaggregate %in% disaggs_cascade) %>%
-    group_by(psnu, indicator, ageasentered, sex) %>%
-    summarise(across(c(targets, cumulative, starts_with("qtr")),
-                     sum, na.rm = TRUE), .groups = "drop")
 
   # Datim Reference Datasets ----
 
-  datim_session()
+  #datim_session()
 
-  cop_mechs <- datapackr::getMechanismView()
+  #cop_mechs <- datapackr::getMechanismView()
 
-  cop_datapack <- datapackr::cop22_data_pack_schema
+  #cop_datapack <- datapackr::cop22_data_pack_schema
 
-  cop_coc <- datapackr::getValidCategoryOptions()
+  #cop_coc <- datapackr::getValidCategoryOptions()
 
-  cop_de_coc <- datapackr::cop22_map_DataPack_DATIM_DEs_COCs %>% clean_names()
+  #cop_de_coc <- datapackr::cop22_map_DataPack_DATIM_DEs_COCs %>% clean_names()
 
-  df_cop_de_coc <- cop_de_coc %>%
-    filter(targets_results == "targets",
-           period == paste0(curr_fy, "Oct"),
-           dataset == "mer",
-           support_type == "DSD") %>%
-    select(indicator_code,
-           indicator = technical_area,
-           disagg_type,
-           categoryoptioncomboname,
-           age = valid_ages_name,
-           sex = valid_sexes_name,
-           key_pop = valid_kps_name)
+  df_cop_de_coc <- datapackr::cop22_map_DataPack_DATIM_DEs_COCs %>%
+    dp_indicators()
 
   cop_indicators <- df_cop_de_coc %>%
+    filter(indicator %ni% c("PP_PREV", "KP_MAT", "VMMC_CIRC")) %>%
     distinct(indicator) %>%
     arrange(indicator) %>%
     pull()
 
   cop_cascade_indicators <- c("HTS_TST", "HTS_TST_POS", "TX_NEW", "TX_CURR", "TX_PVLS")
 
-  # PSNU => Error - "Obubra General Hospital" is not a PSNU
-  cop_psnus <- datapackr::cop22_valid_PSNUs %>% filter(ou == cntry)
+  # DP Read IM Allocations sheets ----
+
+  df_dp_psnu_im <- dp_read(filename = file_cop22_dp, sheet = "PSNUxIM")
+
+  # Extract Sources
+  df_dp_source <- df_dp_psnu_im %>%
+    select(-starts_with("...")) %>%
+    rename_with(.cols = everything(),
+                .fn = ~str_replace(., "...[:digit:]{3}$", "_value")) %>%
+    rename_with(.cols = everything(),
+                .fn = ~str_replace(., "...[:digit:]{1,2}$", "_share"))
+
+  df_dp_source <- df_dp_source %>%
+    select(PSNU:Rollup, ends_with("DSD_share")) %>%
+    pivot_longer(cols = ends_with("share"),
+                 names_to = "mech_code",
+                 values_to = "value")
+
+  df_dp_source <- df_dp_source %>%
+    separate(col = mech_code,
+             into = c("mech_code", "support_type", "value_type"))
+
+  df_dp_source <- df_dp_source %>%
+    mutate(snu = str_extract(PSNU, ".*(?=\\[#)"),
+           snu = str_trim(snu, side = "both"))
+
+
+  # DP Get Results Contributions
+  #df_dp_msd_indicators %>% glimpse()
+  #df_psnu %>% glimpse()
+
+  ## DP Get IMs
+  dp_mechs <- df_dp_psnu_im %>%
+    dp_clean() %>%
+    dp_extract_shares() %>%
+    distinct(attribute) %>%
+    arrange(attribute) %>%
+    pull()
+
+
+  ## IM Shares by Agency ----
+  df_msd_agency_im_results <- df_psnu %>%
+    filter(fiscal_year == prev_fy,
+           fundingagency != "Dedup",
+           !(str_detect(psnu, "_Mil") & fundingagency == "USAID")) %>%
+    left_join(df_cop_de_coc,
+              by = c("indicator", "numeratordenom", "disaggregate",
+                     "indicatortype" = "indicator_type", "ageasentered", "sex")) %>%
+    filter(!is.na(indicator_code)) %>%
+    mutate(
+      keypop = case_when(
+        str_detect(indicator, "KP") ~ otherdisaggregate,
+        TRUE ~ NA_character_
+      )
+    ) %>%
+    select(fundingagency, psnu, mech_code, indicator_code, indicator,
+           numeratordenom, disaggregate, keypop,
+           starts_with("qtr"), cumulative, targets)
+
+  df_msd_agency_im_results <- df_msd_agency_im_results %>%
+    left_join(df_mech_flags, by = c("psnu", "mech_code")) %>%
+    mutate(mech_code = case_when(
+      mech_code_new != mech_code ~ mech_code_new,
+      mech_code == "17747" ~ "70255",
+      TRUE ~ mech_code
+    )) %>%
+    select(-mech_code_new)
+
+  df_msd_agency_im_shares <- df_msd_agency_im_results %>%
+    group_by(fundingagency, mech_code, indicator_code, indicator,
+             numeratordenom, disaggregate, keypop) %>% #, statushiv, modality, otherdisaggregate
+    summarise(across(c(cumulative), sum, na.rm = TRUE), .groups = "drop") %>%
+    rename(results = cumulative) %>%
+    group_by(indicator_code, indicator,
+             numeratordenom, disaggregate, keypop) %>%
+    mutate(results_share = results / sum(results, na.rm = TRUE),
+           results_share = if_else(is.nan(results_share), 0, results_share)) %>%
+    ungroup()
+
+  ## Results Share by Agency, PSNU, IM - Age, Sex ----
+
+  ## LAGOS TX_CURR Shares ----
+  tx_curr_lagos <- df_psnu %>%
+    filter(fiscal_year == curr_fy,
+           fundingagency != "Dedup",
+           psnu == "Lagos",
+           indicator == "TX_CURR",
+           standardizeddisaggregate == "Total Numerator") %>%
+    msd_im_transition(df_mech_flags, "psnu") %>%
+    group_by(psnu, mech_code) %>%
+    summarise(across(qtr1, sum, na.rm = T), .groups = "drop") %>%
+    filter(qtr1 > 0) %>%
+    mutate(share = qtr1 / sum(qtr1, na.rm = T),
+           mech_code = case_when(
+             mech_code == "81856" ~ "160525",
+             TRUE ~ mech_code
+           ))
+
+  ## Results share by PSNU & IM ----
+
+  df_msd_agency_im_results <- df_psnu %>%
+    filter(fiscal_year == prev_fy,
+           fundingagency != "Dedup",
+           !(str_detect(psnu, "_Mil") & fundingagency == "USAID")) %>%
+    msd_to_dp_indicators(.df_de_coc = df_cop_de_coc) %>%
+    msd_im_transition(.df_mechs = df_mech_flags, 'psnu') %>%
+    group_by(psnu, mech_code, indicator_code) %>%
+    summarise(results = sum(cumulative, na.rm = TRUE), .groups = "drop") %>%
+    group_by(psnu, indicator_code) %>%
+    mutate(results_share = results / sum(results, na.rm = T)) %>%
+    ungroup()
+
+  ## Results share by PSNU, IM, Age, Sex ----
+  df_msd_agency_im_age_sex_results <- df_psnu %>%
+    filter(fiscal_year == prev_fy,
+           fundingagency != "Dedup",
+           !(str_detect(psnu, "_Mil") & fundingagency == "USAID")) %>%
+    msd_to_dp_indicators(.df_de_coc = df_cop_de_coc) %>%
+    msd_im_transition(.df_mechs = df_mech_flags, 'psnu') %>%
+    group_by(psnu, mech_code, indicator_code, ageasentered, sex, keypop) %>%
+    summarise(results = sum(cumulative, na.rm = TRUE), .groups = "drop")
+
+  ## Fill in zero cum with state avg
+  df_msd_agency_im_age_sex_results <- df_msd_agency_im_age_sex_results %>%
+    group_by(psnu, indicator_target, age, sex, keypop) %>%
+    mutate(
+      cumulative = case_when(
+        cumulative == 0 ~ round(mean(cumulative, na.rm =T), 0),
+        TRUE ~ cumulative
+      )
+    )
+
+  df_msd_agency_im_age_sex_shares <- df_msd_agency_im_age_sex_results %>%
+    filter(mech_code %ni% c(14505, 17747)) %>%
+    group_by(psnu, indicator_target, age, sex, keypop) %>%
+    mutate(
+      results = sum(cumulative, na.rm = TRUE),
+      cdc_results = sum(cumulative[mech_code == "18657"], na.rm =T),
+      share = case_when(
+        psnu == "Lagos" & mech_code == "18677" ~ tx_curr_lagos$share[tx_curr_lagos$mech_code == "18677"],
+        psnu == "Lagos" &  mech_code == "81861" &
+          str_detect(indicator_target, "KP_.*|.KP.*T$|.KP.T$") ~ 1,
+        psnu == "Lagos" &  mech_code == "81861" &
+          str_detect(indicator_target, "KP_.*|.KP.*T$|.KP.T$", negate = TRUE) ~ tx_curr_lagos$share[tx_curr_lagos$mech_code == "81861"],
+        psnu == "Lagos" &  mech_code == "160525" ~ tx_curr_lagos$share[tx_curr_lagos$mech_code == "160525"],
+        TRUE ~ cumulative / results
+      ),
+      share = case_when(
+        is.infinite(share) | is.nan(share) ~ NA_real_,
+        share == 0 ~ NA_real_,
+        TRUE ~ share
+      )
+    ) %>%
+    ungroup()
+
+
+
+  df_dp_source %>% glimpse()
+
+  non_usaid_mechs
+
+  df_dp_out <- df_dp_source %>%
+    left_join(df_msd_agency_im_age_sex_shares,
+              by = c('snu' = 'psnu',
+                     'indicator_code' = 'indicator_target',
+                     'Age' = 'age',
+                     'Sex' = 'sex',
+                     'KeyPop' = 'keypop',
+                     'mech_code')
+    ) %>%
+    mutate(
+      shares = case_when(
+        is.na(shares) ~ NA_real_,
+        TRUE ~ as.numeric(shares)
+      ),
+      shares = case_when(
+        snu %in% psnu_usaid ~ share,
+        TRUE ~ shares
+      )) %>%
+    mutate(shares = share) %>%
+    # mutate(
+    #   shares = as.numeric(shares),
+    #   shares = case_when(
+    #     snu %in% psnu_usaid | snu == "Lagos" ~ share,
+    #     TRUE ~ shares
+    #   )
+    # ) %>%
+    select(-c(snu:share)) %>%
+    pivot_wider(names_from = mech_code,
+                names_sort = TRUE,
+                values_from = shares) %>%
+    mutate(`Not PEPFAR` = NA_character_) %>%
+    relocate(`Not PEPFAR`, .after = Rollup)
+
+  df_dp_out %>% glimpse()
+
+
+
+  # Update files
+
+  file_dest <- curr_date() %>%
+    paste0("_bk_", ., "_v7") %>%
+    str_replace(string = file_cop22_dp,
+                pattern = "_v7",
+                replacement = .)
+
+  df_dp_out %>%
+    select(`Not PEPFAR`:last_col()) %>%
+    dp_write(.df_out = .,
+             file_in = file_cop22_dp,
+             file_out = file_dest)
+
+  file_dest %>% open_path()
+
+
+
+
+
+
+
+
+
+
+
+
+
+### ------
+
+  # Read DP
+  df_dp_psnu_im <- df_dp_psnu_im %>%
+    select(-starts_with("...")) %>%
+    rename_with(.cols = everything(),
+                .fn = ~str_replace(., "...[:digit:]{3}$", "_value")) %>%
+    rename_with(.cols = everything(),
+                .fn = ~str_replace(., "...[:digit:]{1,2}$", "_share"))
+
+  df_dp_psnu_im <- df_dp_psnu_im %>%
+    select(PSNU:Rollup, ends_with("DSD_share")) %>%
+    pivot_longer(cols = ends_with("share"),
+                 names_to = "mech_code",
+                 values_to = "shares")
+
+  df_dp_psnu_im <- df_dp_psnu_im %>%
+    mutate(mech_code = str_remove(mech_code, "_DSD_share"))
+
+  df_dp_psnu_im <- df_dp_psnu_im %>%
+    mutate(snu = str_extract(PSNU, ".*(?=\\[#)"),
+           snu = str_trim(snu, side = "both"))
+
+
+  # Update Allocations -----
+  df_dp_psnu_im_prop <- df_dp_psnu_im %>%
+    left_join(
+      df_msd_psnu_mechs_share,
+      by = c("snu" = "psnu", "mech_code" = "mech_code")
+    ) %>%
+    mutate(
+      shares = share,
+      shares = case_when(
+        KeyPop %in% kp_disaggs & mech_code %in% gp_mechs ~ NA_real_,
+        is.na(KeyPop) & mech_code %in% kp_mechs ~ NA_real_,
+        TRUE ~ shares
+      ),
+      mech_code = paste0(mech_code, "_DSD")) %>%
+    select(-c(snu:share)) %>%
+    pivot_wider(names_from = mech_code, values_from = shares) %>%
+    mutate(`Not PEPFAR` = NA_character_) %>%
+    relocate(`Not PEPFAR`, .after = Rollup)
+
+
+
+
+  # Save a copy ----
+  wb_allocations = createWorkbook()
+
+  addWorksheet(wb = wb_allocations, sheetName = "PSNUxIM")
+
+  writeDataTable(wb = wb_allocations,
+                 sheet = "PSNUxIM",
+                 x = df_dp_psnu_im_prop)
+
+  saveWorkbook(wb = wb_allocations,
+               file = file.path(dir_dataout, "DP IM Allocations.xlsx"),
+               overwrite = TRUE)
+
+  file.path(dir_dataout, "DP IM Allocations.xlsx") %>% open_path()
+
+  # Load DP Workbook ----
+  ws_psnu_im <- readWorkbook(xlsxFile = file_cop22_dp,
+                             sheet = "PSNUxIM",
+                             startRow = 8)
+
+  wb_dp <- loadWorkbook(file = file_cop22_dp)
+
+  saveWorkbook(
+    wb = wb_dp,
+    file = str_replace(file_cop22_dp, "_v5", "_bk_v5")
+  )
+
+  wb_dp2 <- loadWorkbook(file = str_replace(file_cop22_dp, "_v5", "_bk_v5"))
+
+  writeData(
+    wb = wb_dp2,
+    sheet = "PSNUxIM",
+    x = df_dp_psnu_im_prop %>% select(`Not PEPFAR`, ends_with("_DSD")),
+    startCol = "I",
+    startRow = 15,
+    colNames = F
+  )
+
+  saveWorkbook(
+    wb = wb_dp2,
+    file = str_replace(file_cop22_dp, "_v5", "_bk_allocations_v5"),
+    overwrite = TRUE
+  )
+
+  open_path(str_replace(file_cop22_dp, "_v5", "_bk_allocations_v5"))
+
+
+
+
+
+
+
+
+
 
   # TameDP Data Pack Processing ----
 
@@ -293,8 +791,12 @@
 
   ## Indicators
 
+  df_dp %>% glimpse()
+
   df_dp_indicators <- df_dp %>%
-    distinct(indicator, numeratordenom, standardizeddisaggregate) %>%
+    select(indicator, numeratordenom, indicatortype,
+           standardizeddisaggregate, modality, statushiv, otherdisaggregate) %>%
+    distinct() %>%
     arrange(indicator)
 
   df_dp_indicators %>% prinf()
@@ -396,7 +898,35 @@
 
 
 
-## -----
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ## OLD Ref ----
 
 
   df_cop22 <- file_cop22_dp %>%
