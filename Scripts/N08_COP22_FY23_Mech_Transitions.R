@@ -159,11 +159,14 @@
     filter(!is.na(transition)) %>%
     mutate(label = paste0(name, "\n", mech_code, "\n", mech_name))
 
+  spdf_mechs %>% dview
+
 # VIZ
 
   ## Basemap
   basemap <- terrain_map(countries = cntry,
-                         adm0 = adm0, adm1 = adm1,
+                         adm0 = adm0,
+                         adm1 = adm1,
                          mask = TRUE)
 
   basemap
@@ -175,7 +178,7 @@
             size = .2, color = grey10k) +
     geom_sf_text(data = spdf_mechs %>% filter(source == "100222"),
               aes(label = label), color = usaid_black, size = 3) +
-    scale_fill_si(palette = "siei", discrete = T) +
+    scale_fill_si(palette = "category10", discrete = T) +
     facet_wrap(~transition)
 
   df_mechs_colors %>%
@@ -190,7 +193,7 @@
                      aes(label = label),
                      color = usaid_black, size = 2,
                      show.legend = FALSE) +
-        scale_fill_si(palette = "siei", discrete = T) +
+        scale_fill_si(palette = "category10", discrete = T) +
         facet_wrap(~transition)
 
       #print(mech_map)
