@@ -671,7 +671,7 @@
                sites_per_km = "# of S. / 1k KM^2",
                patients_per_km = "# P. / KM^2") %>%
     cols_hide(sites_per_km) %>%
-    opt_all_caps( all_caps = TRUE) %>%
+    opt_all_caps(all_caps = TRUE) %>%
     cols_width(
       agency ~ px(120),
       states ~ px(50),
