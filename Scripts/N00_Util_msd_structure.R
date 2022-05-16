@@ -17,7 +17,20 @@
   dir_dataout <- "Dataout"
   dir_graphics <- "Graphics"
 
+  dir_merdata %>% open_path()
+
   cntry <- "Nigeria"
+
+  df_cntry <- dir_merdata %>%
+    return_latest("PSNU_IM_FY.*_N.*") %>%
+    return_latest(".*PSNU_IM_FY.*_N.*") %>%
+    read_msd()
+
+  df_cntry %>% glimpse()
+
+  df_cntry %>%
+    select(indicator:modality) %>%
+    distinct()
 
 # FUNCITONS ----
 
@@ -44,7 +57,7 @@
     options <- "?format=json&paging=false"
 
     if (is.null(fields)) {
-      options <- paste0(options, "&fields=all")
+      options <- paste0(options, "&fields=")
     } else {
       options <- paste0(options, "&fields=", paste0(fields, collapse = ","))
     }
@@ -89,15 +102,15 @@
 
       dta_url <- dta_url %>% paste0(options)
 
-      print(length(cols))
-
-      if (length(cols) > 0) {
-        dta_url <- dta_url %>%
-          paste0("&fields=", paste0(cols, collapse = ","))
-      } else {
-        dta_url <- dta_url %>%
-          paste0("&fields=:nameable")
-      }
+      # print(length(cols))
+      #
+      # if (length(cols) > 0) {
+      #   dta_url <- dta_url %>%
+      #     paste0("&fields=", paste0(cols, collapse = ","))
+      # } else {
+      #   dta_url <- dta_url %>%
+      #     paste0("&fields=:nameable")
+      # }
 
       print(dta_url)
 
@@ -153,6 +166,7 @@
 
   datim_resources()
 
+  # Get id, code, name, shortName, displayName, description
   datim_resources(res_name = "Data Elements", dataset = T)
 
   datim_resources(res_name = "Indicators", dataset = T)
@@ -163,21 +177,25 @@
 
   datim_resources(res_name = "Category Option Combos", dataset = T)
 
+  datim_resources(res_name = "Data Sets", dataset = TRUE)
+
   datim_resources(res_name = "Data Sets", dataset = TRUE) %>%
     #filter(str_detect(name, paste0(mer_targets1, collapse = "|"))) %>%
     filter(str_detect(code, paste0(mer_targets2, collapse = "|"))) %>%
-    pull(href) %>%
-    first() %>%
-    #pull(id) %>%
+    pull(id) %>%
+    #first() %>%
+    last() %>%
     map_dfr(function(.x){
+
+      url <- "https://final.datim.org/api/dataSets/"
 
       print(paste0("Data Set: ", .x))
 
       dt_id <- basename(.x)
 
       dt_url <- .x %>%
-        str_remove(basename(.)) %>%
-        paste0("?format=json&paging=false&fields=*")
+        #str_remove(basename(.)) %>%
+        paste0(url, ., "/?format=json&paging=false&fields=*")
 
       print(dt_url)
 
