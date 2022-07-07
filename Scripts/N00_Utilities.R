@@ -1341,7 +1341,7 @@ curr_date <- function(fmt = "%Y-%m-%d") {
   d <- base::Sys.Date()
 
   if (!is.null(fmt)) {
-    d <- format(d, fmt)
+    d <- base::format(d, fmt)
   }
 
   return(d)
@@ -1349,8 +1349,8 @@ curr_date <- function(fmt = "%Y-%m-%d") {
 
 #' @title Get n% of a number
 #'
-#' @param num  Number
-#' @param prop Proportion, default 1
+#' @param n  Number
+#' @param p Proportion, default 1
 #' @param ...  Other valid options of round
 #'
 get_proportion <- function(n, p = 1, ...) {

@@ -19,6 +19,7 @@
   library(gtExtras)
   library(ggtext)
   library(patchwork)
+  library(ggchicklet)
 
   source("./Scripts/N00_Utilities.R")
 
@@ -73,16 +74,20 @@
 
   spdf_pepfar <- file_shp %>% read_sf()
 
-  df_attr <- cntry %>% get_attributes()
+  df_attr <- get_attributes(country = cntry)
 
-  spdf_pepfar <- spdf_pepfar %>%
-    left_join(df_attr, by = c("uid" = "id"))
+  spdf_nga <- spdf_pepfar %>%
+    dplyr::left_join(df_attr, by = c("uid" = "id"))
 
-  spdf_cntry <- spdf_pepfar %>% filter(label == "country")
-  spdf_psnu <- spdf_pepfar %>% filter(label == "prioritization")
-  spdf_lga <- spdf_pepfar %>% filter(label == "community")
+  # Country sub-units
+  spdf_cntry <- spdf_nga %>% filter(label == "country")
+  spdf_psnu <- spdf_nga %>% filter(label == "prioritization")
+  spdf_lga <- spdf_nga %>% filter(label == "community")
 
-  spdf_lga %>% gview()
+  # spdf_list <- spdf_pepfar %>%
+  #   cntry_polygons(spdf = ., cntry = cntry)
+
+  #spdf_lga %>% gview()
 
   # MSD Site x IM ----
 
@@ -109,8 +114,7 @@
 
   # MSD Site x IM
   df_msd_sites <- df_sites %>%
-    filter(fiscal_year == curr_fy,
-           fundingagency != "Dedup")
+    filter(fiscal_year == curr_fy, fundingagency != "Dedup")
 
   inds_pmtct <- df_msd_sites %>%
     filter(str_detect(indicator, "PMTCT_.*")) %>%
@@ -125,7 +129,7 @@
     filter(indicator %in% inds_pmtct) %>%
     clean_indicator()
 
-  # MSD PSNU x IM
+  # MSD PSNU x IM ----
 
   df_psnu <- file_psnu_im %>% read_msd()
 
@@ -139,8 +143,6 @@
     summarise(results = sum(cumulative, na.rm = T), .groups = "drop")
 
 # MUNGE ----
-
-
 
 
   # PMTCT - STAT @ Community
@@ -167,7 +169,7 @@
            stat_nn = ifelse(stat_nn < 0, 0, stat_nn),
            stat_cov = stat / stat_d,
            stat_yield = stat_pos / stat,
-           stat_na = stat_pos - art,              # Non linked
+           stat_na = stat_pos - art,                    # Non linked
            stat_na = ifelse(stat_na < 0, 0, stat_na),
            art_cov = art / stat_pos) %>%
     ungroup()
@@ -177,8 +179,11 @@
     pivot_longer(cols = starts_with(c("stat", "art")),
                  names_to = "metric",
                  values_to = "value") %>%
-    mutate(metric = factor(metric, levels = c("stat_d", "stat", "stat_pos", "art"))) %>%
-    left_join(x = spdf_lga, y = ., by = c("uid" = "communityuid")) %>%
+    mutate(metric = factor(metric,
+                           levels = c("stat_d", "stat", "stat_pos", "art"))) %>%
+    left_join(x = spdf_lga,
+              y = .,
+              by = c("uid" = "communityuid")) %>%
     filter(!is.na(value))
 
   # PMTCT - STAT @ PSNU
@@ -212,16 +217,140 @@
                  names_to = "metric",
                  values_to = "value") %>% #distinct(metric)
     mutate(metric = factor(metric,
-                           levels = c("stat_d", "stat", "stat_nn",
-                                      "stat_pos", "stat_np", "stat_cov",
-                                      "stat_yield", "art", "art_cov"),
+                           levels = c("stat_d", "stat",
+                                      "stat_nn", "stat_cov",
+                                      "stat_pos", "stat_np",
+                                      "stat_yield", "stat_na",
+                                      "art", "art_cov"),
                            ordered = T)) %>%
     filter(!is.na(value))
+
+  # OU Summary
+  ou_pmtct <- df_psnu_stat %>%
+    group_by(metric) %>%
+    summarise(across(value, sum, na.rm = T)) %>%
+    pivot_wider(names_from = metric, values_from = value) %>%
+    mutate(stat_nn = stat_d - stat,                    # Non tested
+           stat_cov = stat / stat_d,
+           stat_np = stat - stat_pos,
+           stat_yield = stat_pos / stat,
+           stat_na = stat_pos - art,                   # Non linked
+           art_cov = art / stat_pos)
 
 
 # VIZ ----
 
-  # Maps
+  # Plots ----
+
+  plot_ou_stat_cov <- ou_pmtct %>%
+    ggplot() +
+    geom_chicklet(aes(x = 0, y = stat_cov - .25),
+                  fill = scooter,
+                  size = 1,
+                  color = NA,
+                  width = .25,
+                  radius = grid::unit(10, "pt")) +
+    geom_rect(aes(xmin = -.125, xmax = .125, ymin = .25, ymax = stat_cov),
+              fill = scooter,
+              size = 1,
+              color = NA) +
+    geom_chicklet(aes(x = 0, y = 1),
+                  fill = NA,
+                  size = 1.5,
+                  color = scooter_light,
+                  width = .25,
+                  radius = grid::unit(10, "pt")) +
+    geom_hline(aes(yintercept = stat_cov),
+               size = 1.5, lty = "dashed",
+               color = scooter) +
+    geom_text(aes(x = 0, y = .2),
+              label = paste0(percent(ou_pmtct$stat_cov, 1),
+                             " of women seen at ANC1 were tested for HIV\n",
+                             comma(ou_pmtct$stat), " out of ",
+                             comma(ou_pmtct$stat_d), " pregnant women"),
+              color = grey10k,
+              fontface = "bold",
+              size = 10,
+              hjust = 0) +
+    coord_flip() +
+    si_style_nolines() +
+    labs(x = "", y = "") +
+    si_style_nolines() +
+    theme(axis.text = element_blank())
+
+  plot_ou_stat_pos <- ou_pmtct %>%
+    ggplot() +
+    geom_chicklet(aes(x = 0, y = stat_yield),
+                  fill = burnt_sienna_light,
+                  size = 1,
+                  color = NA,
+                  width = .25,
+                  radius = grid::unit(10, "pt")) +
+    geom_rect(aes(xmin = -.125, xmax = .125, ymin = stat_yield/2, ymax = stat_yield),
+                  fill = burnt_sienna_light,
+                  size = 1,
+                  color = NA) +
+    geom_chicklet(aes(x = 0, y = 1),
+                  fill = NA,
+                  size = 1.5,
+                  color = burnt_sienna,
+                  width = .25,
+                  radius = grid::unit(10, "pt")) +
+    geom_hline(aes(yintercept = stat_yield),
+               size = 1.5, lty = "dashed",
+               color = burnt_sienna) +
+    geom_text(aes(x = 0, y = .2),
+              label = paste0(percent(ou_pmtct$stat_yield, 1),
+                             " of pregnant women are HIV+\n",
+                             comma(ou_pmtct$stat_pos), " out of ",
+                             comma(ou_pmtct$stat), " pregnant women"),
+              color = usaid_black,
+              fontface = "bold",
+              size = 10,
+              hjust = 0) +
+    coord_flip() +
+    si_style_nolines() +
+    labs(x = "", y = "") +
+    si_style_nolines() +
+    theme(axis.text = element_blank())
+
+  plot_ou_art_cov <- ou_pmtct %>%
+    ggplot() +
+    geom_chicklet(aes(x = 0, y = art_cov - .25),
+                  fill = genoa_light,
+                  size = 1,
+                  color = NA,
+                  width = .25,
+                  radius = grid::unit(10, "pt")) +
+    geom_rect(aes(xmin = -.125, xmax = .125, ymin = .25, ymax = art_cov),
+              fill = genoa_light,
+              size = 1,
+              color = NA) +
+    geom_chicklet(aes(x = 0, y = 1),
+                  fill = NA,
+                  size = 1.5,
+                  color = genoa,
+                  width = .25,
+                  radius = grid::unit(10, "pt")) +
+    geom_hline(aes(yintercept = art_cov),
+               size = 1.5, lty = "dashed",
+               color = genoa) +
+    geom_text(aes(x = 0, y = .2),
+              label = paste0(percent(ou_pmtct$art_cov, 1),
+                             " of HIV+ women receives ART\n",
+                             comma(ou_pmtct$art), " out of ",
+                             comma(ou_pmtct$stat_pos), " pregnant women are on treatment"),
+              color = grey10k,
+              fontface = "bold",
+              size = 10,
+              hjust = 0) +
+    coord_flip() +
+    labs(x = "", y = "") +
+    si_style_nolines() +
+    theme(axis.text = element_blank())
+
+
+  # Maps ----
 
   basemap <- terrain_map(countries = cntry,
                          adm0 = spdf_cntry,
@@ -233,7 +362,9 @@
     geom_sf(data = spdf_com_stat %>% filter(metric %in% c("stat_d", "stat")),
             aes(fill = value),
             size = .2, color = grey10k) +
-    geom_sf(data = spdf_psnu, size = .3, fill = NA, color = grey60k) +
+    geom_sf(data = spdf_cntry, size = 1.5, fill = NA, color = grey10k) +
+    geom_sf(data = spdf_psnu, size = .3, fill = NA, color = grey40k) +
+    geom_sf(data = spdf_cntry, size = .5, fill = NA, color = grey60k) +
     geom_sf_text(data = spdf_psnu, aes(label = name), size = 3.5, color = grey10k, fontface = "bold") +
     geom_sf_text(data = spdf_psnu, aes(label = name), size = 3, color = usaid_black) +
     scale_fill_si(palette = "genoas",
@@ -247,16 +378,20 @@
           legend.key.height = unit(.1, "in"),
           legend.key.width = unit(1, "in"))
 
-  stat_labels <- c("ELIGIBLE", "TESTED")
+  stat_labels <- c("# OF WOMEN ELIGIBLE FOR TESTING", "# OF PREGNANT WOMEN ACTUALLY TESTED")
   names(stat_labels) <- c("stat_d", "stat")
+
+  stat_pos_labels <- c("# OF PREGNANT WOMEN TESTING POSITIVE")
+  names(stat_pos_labels) <- c("stat_pos")
 
   map_pmtct_stat <- basemap +
     geom_sf(data = spdf_com_stat %>%
               filter(metric %in% c("stat_d", "stat")),
             aes(fill = value),
             size = .2, color = grey10k) +
-    geom_sf(data = spdf_psnu, size = .3, fill = NA, color = grey60k) +
-    #geom_sf_text(data = spdf_psnu, aes(label = name), size = 3, color = grey10k, fontface = "bold") +
+    geom_sf(data = spdf_cntry, size = 1.5, fill = NA, color = grey10k) +
+    geom_sf(data = spdf_psnu, size = .5, fill = NA, color = grey40k) +
+    geom_sf(data = spdf_cntry, size = .5, fill = NA, color = grey60k) +
     geom_sf_text(data = spdf_psnu, aes(label = name), size = 2, color = usaid_darkgrey) +
     scale_fill_si(palette = "genoas",
                   limits = c(0, max(spdf_com_stat$value))) +
@@ -267,22 +402,65 @@
           legend.key.height = unit(.1, "in"),
           legend.key.width = unit(1, "in"))
 
-  ou_pmtct <- df_psnu_stat %>%
-    group_by(metric) %>%
-    summarise(across(value, sum, na.rm = T)) %>%
-    pivot_wider(names_from = metric, values_from = value)
+  map_pmtct_stat_pos <- basemap +
+    geom_sf(data = spdf_com_stat %>%
+              filter(metric %in% c("stat_pos")),
+            aes(fill = value),
+            size = .2, color = grey10k) +
+    geom_sf(data = spdf_cntry, size = 1.5, fill = NA, color = grey10k) +
+    geom_sf(data = spdf_psnu, size = .3, fill = NA, color = grey40k) +
+    geom_sf(data = spdf_cntry, size = .5, fill = NA, color = grey60k) +
+    geom_sf_text(data = spdf_psnu, aes(label = name), size = 2, color = usaid_darkgrey) +
+    scale_fill_si(palette = "burnt_siennas",
+                  limits = c(0, max(filter(spdf_com_stat, metric == "stat_pos") %>% pull(value)))) +
+    labs(x = "", y = "") +
+    facet_wrap(~metric, nrow = 1, labeller = labeller(metric = stat_pos_labels)) +
+    si_style_map() +
+    theme(legend.title = element_blank(),
+          legend.key.height = unit(.1, "in"),
+          legend.key.width = unit(1, "in"))
 
-  map_pmtct_stat +
-    labs(#title = "NIGERIA - PMTCT HIV TESTING",
-         subtitle = paste0(
-           "As of FY21Q4, ",
-           percent(ou_pmtct$stat / ou_pmtct$stat_d, 1),
-           " of pregnant women were tested [",
-           comma(ou_pmtct$stat),
-           " out of ",
-           comma(ou_pmtct$stat_d),
-           "]"
-         ))
+  # VIZ ----
+
+  #(map_pmtct_stat / map_pmtct_stat_pos) + plot_layout(heights = c(60, 40))
+
+  (plot_ou_stat_cov / plot_ou_stat_pos / plot_ou_art_cov) +
+    plot_layout(heights = c(3,3,3))
+
+  dim_max <- get_max_dim(plot_ou_stat_cov, plot_ou_stat_pos,
+                         plot_ou_art_cov, map_pmtct_stat)
+
+  set_dim(plot_ou_stat_cov, dim_max)
+  set_dim(map_pmtct_stat, dim_max)
+
+  cowplot::plot_grid(plot_ou_stat_cov, map_pmtct_stat,
+                     ncol = 1,
+                     align = "hv",
+                     axis = "bt",
+                     rel_heights = c(1, 5))
+
+  (plot_ou_stat_cov / (plot_ou_stat_pos + plot_ou_art_cov)) +
+    plot_layout(heights = c(20, 20, 60))
+
+  (plot_ou_stat_cov / (plot_ou_stat_pos + plot_ou_art_cov)) / map_pmtct_stat +
+    plot_layout(heights = c(20, 20, 60)) +
+    plot_annotation(
+      title = "PREGNANT WOMEN WITH KNOWN HIV STATUS AT ANTENATAL CARE (ANC)",
+      subtitle = paste0(
+        "As of FY21Q4, ",
+        percent(ou_pmtct$stat / ou_pmtct$stat_d, 1),
+        " of pregnant women were tested [",
+        comma(ou_pmtct$stat),
+        " out of ",
+        comma(ou_pmtct$stat_d),
+        "] with ",
+        percent(ou_pmtct$stat_pos / ou_pmtct$stat, 1),
+        " [",
+        comma(ou_pmtct$stat_pos),
+        "] of them testing positive"
+      ),
+      tag_levels = "A") +
+    theme(legend.position = "bottom")
 
   si_save(filename = file.path(dir_graphics, "NIGERIA - FY21 PMTCT HIV Testing map.png"),
           plot = last_plot())
@@ -338,6 +516,9 @@
     labs(x = "", y = "") +
     si_style_xgrid() +
     theme(axis.text.y = element_markdown(face = "bold"))
+
+
+  # ----
 
   si_save(filename = file.path(dir_graphics, "NIGERIA - FY21 PMTCT HIV Testing Bars Plot.png"),
           plot = last_plot())
