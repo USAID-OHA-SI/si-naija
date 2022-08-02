@@ -2,8 +2,7 @@
 ##  AUTHOR:  Baboyma Kagniniwa | USAID
 ##  PURPOSE: COP22 / FY23 Targets Allocation
 ##  LICENCE: MIT
-##  DATE:    2022-03-28
-##  UPDATED: 2022-07-08
+##  DATE:    2022-08-01
 
 ## Libraries ----
 
@@ -15,18 +14,16 @@
   library(sf)
   library(janitor)
   library(glue)
-  #library(gt)
-  #library(gtExtras)
+  library(gt)
   library(ggtext)
   library(patchwork)
-  library(ggchicklet)
-  library(ggridges)
+  library(cowplot)
 
   library(fontawesome)
   library(emojifont)
   library(extrafont)
 
-  font_import()
+  #font_import()
 
   source("./Scripts/N00_Utilities.R")
   source("./Scripts/N00_Viz_Utilities.R")
@@ -62,7 +59,7 @@
 
   cntry <- "Nigeria"
 
-  ou_uid <- get_ouuid(cntry)
+  cntry_uid <- get_ouuid(cntry)
 
   fac_level <- get_ouorglevel(operatingunit = cntry, org_type = "facility")
 
@@ -77,49 +74,7 @@
 
   prev_fy <- curr_fy - 1
 
-# FUNCTIONS
-
-  #' @title Get LOGO
-  #'
-  #' @note
-  #'
-  #' @param file Prefix of filename. Use f for fill and s for stroke, eg: f_red_s_white
-  #'
-  get_logo <- function(name = "hospital",
-                       fill_color = "white",
-                       stroke_color = NULL,
-                       stroke_width = NULL,
-                       prefix = NULL,
-                       path = NULL,
-                       ...) {
-
-    # Path
-    if (is.null(path))
-      path <- "./Images/logos"
-
-    # Filename
-    file <- paste0(name, ".png")
-
-    if (!is.null(prefix))
-      file <- paste0(prefix, "-", name, ".png")
-
-    # Check if file exists
-    img <- list.files(path, pattern = file, full.names = T)
-
-    if (length(img) == 1)
-      return(img)
-
-    img <- file.path(path, file)
-
-    # Save file
-    fa_png(name = name,
-           fill = fill_color,
-           stroke = stroke_color,
-           file = img,
-           ...)
-
-    return(img)
-  }
+# FUNCTIONS ----
 
 # DATA ----
 
@@ -136,49 +91,70 @@
 
   # Country sub-units
   spdf_cntry <- spdf_nga %>% filter(label == "country")
-  spdf_psnu <- spdf_nga %>% filter(label == "prioritization")
-  spdf_lga <- spdf_nga %>% filter(label == "community")
 
-  # spdf_list <- spdf_pepfar %>%
-  #   cntry_polygons(spdf = ., cntry = cntry)
+  spdf_psnu <- spdf_nga %>% filter(label == "prioritization")
+
+  spdf_psnu_edo <- spdf_psnu %>%
+    filter(name == "Edo") %>%
+    st_transform(crs = st_crs(3857))
+
+  spdf_lga <- spdf_nga %>%
+    filter(label == "community") %>%
+    clean_column(colname = "name")
+
+  spdf_lga_edo <- spdf_lga %>%
+    st_transform(crs = st_crs(3857)) %>%
+    st_centroid() %>%
+    select(uid) %>%
+    st_filter(spdf_psnu_edo, join = st_within) %>%
+    st_drop_geometry() %>%
+    mutate(psnu = "Edo") %>%
+    left_join(spdf_lga, ., by = "uid") %>%
+    filter(!is.na(psnu))
 
   # Site Coordinates
   df_site_locs <- extract_locations(country = cntry,
                                     level = fac_level,
                                     add_geom = TRUE) %>%
-    extract_facilities()
-
-  df_site_locs <- df_site_locs %>%
+    extract_facilities() %>%
     filter(!is.na(latitude) & !is.na(longitude)) %>%
     select(uid = id, name, latitude, longitude)
 
+
+
+  # NAT x SUBNAT ----
+  df_nat <- file_subnat %>% read_msd()
+
+  df_nat %>% glimpse()
+  df_nat %>% distinct(fiscal_year)
+  df_nat %>% distinct(indicator) %>% prinf()
+
+  df_nat_pop <- df_nat %>%
+    filter(country == cntry,
+           fiscal_year == curr_fy -2 & indicator == "PLHIV" |
+           fiscal_year == curr_fy & indicator == "POP_EST",
+           standardizeddisaggregate == "Age/Sex")
+
+  df_nat_pop <- df_nat_pop %>%
+    group_by(psnuuid, psnu, indicator,
+             standardizeddisaggregate,
+             trendscoarse, sex) %>%
+    summarise(across(targets, sum, na.rm = T))
 
   # MSD Site x IM ----
 
   df_sites <- file_site_im %>% read_msd()
 
-  # Agency x State coverage
-  df_agency_cov <- df_sites %>%
-    filter(fiscal_year == curr_fy,
-           funding_agency != "Dedup") %>%
-    distinct(funding_agency, psnu) %>%
-    clean_agency()
-
-  usaid_psnus <- df_agency_cov %>%
-    filter(funding_agency == "USAID",
-           !psnu %in% c("Lagos", "_Military Nigeria")) %>%
-    pull(psnu) %>%
-    sort()
-
-  cdc_psnus <- df_agency_cov %>%
-    filter(funding_agency == "CDC",
-           !psnu %in% c("Lagos", "_Military Nigeria")) %>%
-    pull(psnu) %>%
-    sort()
-
   # MSD Site x IM
+  df_sites %>% distinct(funding_agency)
+
   df_msd_sites <- df_sites %>%
-    filter(fiscal_year == curr_fy, funding_agency != "Dedup")
+    filter(fiscal_year == curr_fy,
+           funding_agency != "Dedup")
+
+  df_msd_sites <- df_msd_sites %>%
+    filter(indicator %in% inds_pmtct) %>%
+    clean_indicator()
 
   inds_pmtct <- df_msd_sites %>%
     filter(str_detect(indicator, "PMTCT_.*")) %>%
@@ -191,17 +167,11 @@
     distinct(standardizeddisaggregate) %>%
     pull(standardizeddisaggregate)
 
-  inds_t_nd <- c("Total Numerator", "Total Denominator")
-
   inds_disaggs <- df_msd_sites %>%
     filter(str_detect(indicator, "PMTCT_.*"),
            str_detect(standardizeddisaggregate, "^Total", negate = T)) %>%
     distinct(standardizeddisaggregate) %>%
     pull(standardizeddisaggregate)
-
-  df_msd_sites <- df_msd_sites %>%
-    filter(indicator %in% inds_pmtct) %>%
-    clean_indicator()
 
   # MSD Site x IM - PMTCT Facilities
 
@@ -219,34 +189,7 @@
   df_pmtct_sites %>%
     filter(is.na(latitude)) %>%
     group_by(psnu) %>%
-    #group_by(psnu, community) %>%
     summarise(n = n_distinct(orgunituid), .groups = "drop")
-
-  # MSD Site x IM - PMTCT Facilities Summary
-
-  df_pmtct_coms <- df_pmtct_sites %>%
-    filter(communityuid != "?") %>%
-    group_by_at(.vars = vars(one_of("funding_agency", str_msd_sites$org_comms, str_msd_sites$org_psnus))) %>%
-    summarise(pmtct_sites = n_distinct(orgunituid), .groups = "drop") %>%
-    clean_column(colname = "community")
-
-  df_pmtct_psnus <- df_pmtct_sites %>%
-    filter(communityuid != "?") %>%
-    group_by_at(.vars = vars(one_of(str_msd_sites$org_psnus))) %>%
-    summarise(pmtct_sites = n_distinct(orgunituid), .groups = "drop")
-
-  # MSD PSNU x IM ----
-
-  # df_psnu <- file_psnu_im %>% read_msd()
-  #
-  # df_psnu %>%
-  #   filter(fiscal_year == prev_fy,
-  #          fundingagency != "Dedup",
-  #          #fundingagency == agency,
-  #          str_detect(indicator, "PMTCT_*")) %>%
-  #   group_by(indicator, standardizeddisaggregate, otherdisaggregate,
-  #            ageasentered, statushiv, hiv_treatment_status) %>%
-  #   summarise(results = sum(cumulative, na.rm = T), .groups = "drop")
 
 # MUNGE ----
 
@@ -260,22 +203,13 @@
     st_make_valid() %>%
     st_filter(spdf_pmtct_sites, ., .predicate = st_intersects)
 
-  spdf_com_sites <- spdf_lga %>%
-    left_join(df_pmtct_coms, by = c("uid" = "communityuid"))
-
-  spdf_psnu_sites <- spdf_psnu %>%
-    left_join(df_pmtct_psnus, by = c("uid" = "psnuuid")) %>%
-    mutate(psnu_label_color = case_when(
-      pmtct_sites > 200 ~ grey10k,
-      TRUE ~ grey90k
-    ))
-
   # PMTCT - STAT @ Community ----
 
   df_msd_sites %>% distinct(indicator) %>% prinf()
 
   df_com_stat <- df_msd_sites %>%
-    filter(str_detect(indicator, "_STAT|T_ART"),
+    filter(psnu == "Edo",
+           str_detect(indicator, "_STAT|T_ART"),
            standardizeddisaggregate %in% inds_t_nd,
            !is.na(cumulative)) %>%
     group_by(psnu, psnuuid, community, communityuid, indicator) %>%
@@ -308,7 +242,8 @@
            stat_na = stat_pos - art,                    # Non linked
            stat_na = ifelse(stat_na < 0, 0, stat_na),
            art_cov = art / stat_pos) %>%
-    ungroup()
+    ungroup() %>%
+    clean_column(colname = "community")
 
   spdf_com_stat <- df_com_stat %>%
     pivot_longer(cols = starts_with(c("stat", "art")),
@@ -317,13 +252,14 @@
       metric,
       levels = c("stat_d", "stat", "stat_nn", "stat_cov", "stat_cov_breaks",
                  "stat_pos", "stat_yield", "stat_na", "art_d", "art", "art_cov"))) %>%
-    left_join(x = spdf_lga, y = ., by = c("uid" = "communityuid")) %>%
+    left_join(x = spdf_lga_edo, y = ., by = c("uid" = "communityuid")) %>%
     filter(!is.na(value))
 
   # PMTCT - STAT @ PSNU ----
 
   df_psnu_stat <- df_msd_sites %>%
-    filter(str_detect(indicator, "_STAT|_STAT_POS|T_ART"),
+    filter(psnu == "Edo",
+           str_detect(indicator, "_STAT|_STAT_POS|T_ART"),
            standardizeddisaggregate %in% inds_t_nd,
            !is.na(cumulative)) %>%
     group_by(psnu, psnuuid, indicator) %>%
@@ -359,8 +295,8 @@
                            ordered = T)) %>%
     filter(!is.na(value))
 
-  # OU Summary
-  ou_pmtct <- df_psnu_stat %>%
+  # PSNU Summary
+  psnu_pmtct <- df_psnu_stat %>%
     group_by(metric) %>%
     summarise(across(value, sum, na.rm = T)) %>%
     pivot_wider(names_from = metric, values_from = value) %>%
@@ -374,24 +310,103 @@
 
 # VIZ ----
 
-  icons <- c("hospital", "female", "mars", "mars-double", "venus", "venus-double",
-             "intersex", "transgender", "child", "user-md", "user-times",
-             "user-plus", "bed", "wheelchair", "wheelchair-alt",
-             "thumbs-o-up", "thumbs-o-down",
-             "check-square", "window-close", "map-marker", "trophy",
-             "arrow-up", "arrow-down", "arrows-h")
+  # Maps ----
 
-  walk(icons, function(.x){
-    print(.x)
-    fa_png(name = .x,
-           fill = "white",
-           file = paste0(dir_images, "/logos/", .x, ".png"))
-  })
+  # Map - Basemap
+  basemap <- terrain_map(countries = cntry,
+                         adm0 = spdf_cntry,
+                         adm1 = spdf_psnu,
+                         mask = T)
+
+  basemap_edo <- terrain_map(#countries = cntry,
+    countries = st_transform(spdf_psnu_edo, crs = st_crs(4326)),
+    #adm0 = spdf_psnu_edo,
+    adm0 = st_transform(spdf_psnu_edo, crs = st_crs(4326)),
+    #adm1 = spdf_lga_edo,
+    adm1 = st_transform(spdf_lga_edo, crs = st_crs(4326)),
+    mask = T)
+
+  # Map - Edo State Locator
+
+  map_aoimap_aoi <- basemap +
+    geom_sf(data = spdf_cntry, size = 1.5, fill = NA, color = grey10k) +
+    geom_sf(data = st_transform(spdf_psnu_edo, crs = st_crs(4326)), size = 1, fill = NA, color = usaid_red) +
+    geom_sf(data = filter(spdf_pmtct_sites, psnu != "Edo"),
+            shape = 21, size = 3, fill = grey50k,
+            color = grey10k, alpha = .6, show.legend = F) +
+    geom_sf(data = filter(spdf_pmtct_sites, funding_agency == agency, psnu == "Edo"),
+            aes(fill = funding_agency),
+            shape = 21, size = 5, color = grey10k, show.legend = F) +
+    geom_sf_text(data = filter(spdf_psnu, name != "Edo"), aes(label = name),
+                 size = 4, color = usaid_black) +
+    geom_sf_text(data = filter(spdf_psnu, name == "Edo"), aes(label = name),
+                 size = 5, fontface = "bold", color = usaid_red) +
+    theme_transparent()
+
+  map_aoimap_aoi
+
+  map_aoi <- ggplot() +
+    geom_sf(data = spdf_psnu_edo, size = 2, fill = NA, color = grey10k) +
+    geom_sf(data = spdf_lga_edo,
+            size = 1, alpha = .7, fill = NA, color = grey30k) +
+    geom_sf(data = spdf_psnu_edo, size = .5, fill = NA, color = grey90k) +
+    geom_sf(data = filter(spdf_pmtct_sites, funding_agency == agency, psnu == "Edo"),
+            aes(fill = funding_agency),
+            shape = 21, size = 5, color = grey10k, show.legend = F) +
+    geom_sf_text(data = spdf_lga_edo, aes(label = name),
+                 size = 3, fontface = "bold", color = usaid_black) +
+    # geom_sf_text(data = filter(spdf_pmtct_sites, funding_agency == agency, psnu == "Edo"),
+    #              aes(label = sitename), size = 4, color = usaid_black) +
+    labs(x = "", y = "") +
+    si_style_map() +
+    theme_transparent()
+
+  map_aoi
+
+  ggdraw(map_aoimap_aoi) +
+    draw_plot(plot = map_aoi,
+              x = .6, y = -.25,
+              width = .25)
 
   # Plots ----
 
+  # Edo State - PMTCT Sites ----
+  df_msd_sites %>%
+    filter(psnu == "Edo",
+           str_detect(community, "Data reported above", negate = TRUE)) %>%
+    distinct() %>%
+    group_by(psnu, community) %>%
+    summarise(sites = n_distinct(orgunituid), .groups = "drop") %>%
+    clean_column(colname = 'community') %>%
+    arrange(desc(sites), community) %>%
+    rename_with(str_to_upper) %>%
+    gt() %>%
+    tab_header(
+      title = "PMTCT FACILITIES",
+      subtitle = md("As of **FY22 Q2**, Edo State had **26** Facilities in **13** Communities")) %>%
+    gtsave(filename = file.path(
+      dir_graphics,
+      "Nigeria - Edo State - PMTCT Facilities table.png"))
+
+  df_msd_sites %>%
+    filter(psnu == "Edo",
+           str_detect(community, "Data reported above", negate = TRUE)) %>%
+    group_by(psnu, community) %>%
+    summarise(sites = n_distinct(orgunituid), .groups = "drop") %>%
+    clean_column(colname = 'community') %>%
+    arrange(desc(sites), community) %>%
+    ggplot(aes(reorder(community, sites), sites)) +
+    geom_col(fill = old_rose_light) +
+    geom_hline(yintercept = 1:4, color = "white") +
+    scale_y_continuous(breaks = seq(1, 4, 1), position = "right") +
+    coord_flip() +
+    labs(x = "", y = "") +
+    si_style_nolines()
+
   # Stat ----
-  plot_ou_stat_cov <- ou_pmtct %>%
+  stat_dd <- 278519
+
+  plot_psnu_stat_cov <- psnu_pmtct %>%
     ggplot() +
     geom_col(aes(x = 0, y = 1), width = 10, fill = trolley_grey_light) +
     geom_col(aes(x = 0, y = stat_cov), width = 10, fill = scooter_med) +
@@ -401,7 +416,6 @@
     geom_richtext(aes(x = 2.5, y = .1),
                   label = paste0("<img src='", get_logo("female"), "' width='100' /> "),
                   fill = NA, color = NA) +
-                  #label = paste0("<img src='", get_logo("female"), "' width='30' /> ")) +
     geom_text(aes(x = 2.5, y = .2),
               label = paste0(percent(ou_pmtct$stat_cov, 1)),
               color = grey10k,
@@ -416,16 +430,31 @@
               fontface = "bold",
               size = 10,
               hjust = 0) +
+    # geom_text(aes(x = 2.5, y = .3),
+    #           label = paste0(percent(ou_pmtct$stat / stat_dd, 1)),
+    #           color = grey10k,
+    #           fontface = "bold",
+    #           size = 80,
+    #           hjust = 0) +
+    geom_text(aes(x = -2, y = .2),
+              label = paste0("Only ", percent(ou_pmtct$stat_d / stat_dd, 1),
+                             " of the state pregnant women seen at ANC1\n[",
+                             comma(ou_pmtct$stat_d), " out of ",
+                             comma(stat_dd), "]"),
+              color = grey10k,
+              fontface = "bold",
+              size = 10,
+              hjust = 0) +
     coord_flip() +
     labs(x = "", y = "") +
     si_style_nolines() +
     theme(axis.text = element_blank(),
           text = element_text())
 
-  plot_ou_stat_cov
+  plot_psnu_stat_cov
 
   # Stat Pos ----
-  plot_ou_stat_pos <- ou_pmtct %>%
+  plot_psnu_stat_pos <- psnu_pmtct %>%
     ggplot() +
     geom_col(aes(x = 0, y = 1), width = 10, fill = scooter_med) +
     geom_col(aes(x = 0, y = stat_yield), width = 10, fill = burnt_sienna_light) +
@@ -455,10 +484,10 @@
     si_style_nolines() +
     theme(axis.text = element_blank())
 
-  plot_ou_stat_pos
+  plot_psnu_stat_pos
 
   # Stat Pos on ART ----
-  plot_ou_art_cov <- ou_pmtct %>%
+  plot_psnu_art_cov <- psnu_pmtct %>%
     ggplot() +
     geom_col(aes(x = 0, y = 1), width = 10, fill = burnt_sienna_light) +
     geom_col(aes(x = 0, y = art_cov), width = 10, fill = genoa_light) +
@@ -487,162 +516,8 @@
     si_style_nolines() +
     theme(axis.text = element_blank())
 
-  plot_ou_art_cov
+  plot_psnu_art_cov
 
-
-  # Viz plots ----
-  (plot_ou_stat_cov / plot_ou_stat_pos / plot_ou_art_cov) +
-    plot_layout(heights = c(3,3,3)) +
-    theme(text = element_text(size = 6))
-
-  dim_max <- get_max_dim(plot_ou_stat_cov, plot_ou_stat_pos,
-                         plot_ou_art_cov, map_pmtct_stat)
-
-  set_dim(plot_ou_stat_cov, dim_max)
-  set_dim(map_pmtct_stat, dim_max)
-
-  cowplot::plot_grid(plot_ou_stat_cov, map_pmtct_stat,
-                     ncol = 1,
-                     align = "hv",
-                     axis = "bt",
-                     rel_heights = c(1, 5))
-
-  (plot_ou_stat_cov / (plot_ou_stat_pos + plot_ou_art_cov)) +
-    plot_layout(heights = c(20, 20, 60))
-
-  # Maps ----
-
-  # Map - Basemap
-  basemap <- terrain_map(countries = cntry,
-                         adm0 = spdf_cntry,
-                         adm1 = spdf_psnu,
-                         mask = T)
-
-  # Map - Site Locations ----
-
-  map_sites <- basemap +
-    geom_sf(data = spdf_cntry, size = 1.5, fill = NA, color = grey10k) +
-    geom_sf(data = spdf_pmtct_sites,
-            aes(fill = funding_agency),
-                shape = 21, size = 2,
-                color = grey10k, alpha = .3,
-            show.legend = F) +
-    geom_sf_text(data = spdf_psnu, aes(label = name),
-                 size = 3, color = usaid_black) +
-    geom_sf(data = spdf_cntry, size = .5, fill = NA, color = grey60k) +
-    scale_fill_manual(values = c("USAID" = usaid_red, "CDC" = usaid_blue, "DOD" = usaid_lightgrey)) +
-    labs(x = "", y = "",
-         title = glue("<span style='color:{usaid_red};'>USAID</span> and <span style='color:{usaid_blue};'>CDC</span> PMTCT Facilities"),
-         subtitle = glue("**Note**: Facilities missing location data are not displayed")) +
-    si_style_map() +
-    theme(plot.title = element_markdown(size = 14, hjust = .5),
-          plot.subtitle = element_markdown(size = 12, hjust = .5),
-          legend.key.height = unit(.1, "in"),
-          legend.key.width = unit(1, "in"))
-
-  map_edo_sites <- basemap +
-    geom_sf(data = spdf_cntry, size = 1.5, fill = NA, color = grey10k) +
-    geom_sf(data = spdf_pmtct_sites %>% filter(psnu == "Edo"),
-            aes(fill = funding_agency),
-            shape = 21, size = 2,
-            color = grey10k, alpha = .3,
-            show.legend = F) +
-    geom_sf_text(data = spdf_psnu, aes(label = name),
-                 size = 3, color = usaid_black) +
-    geom_sf(data = spdf_cntry, size = .5, fill = NA, color = grey60k) +
-    scale_fill_manual(values = c("USAID" = usaid_red, "CDC" = usaid_blue, "DOD" = usaid_lightgrey)) +
-    labs(x = "", y = "",
-         title = glue("<span style='color:{usaid_red};'>USAID</span> and <span style='color:{usaid_blue};'>CDC</span> PMTCT Facilities"),
-         subtitle = glue("**Note**: Facilities missing location data are not displayed")) +
-    si_style_map() +
-    theme(plot.title = element_markdown(size = 14, hjust = .5),
-          plot.subtitle = element_markdown(size = 12, hjust = .5),
-          legend.key.height = unit(.1, "in"),
-          legend.key.width = unit(1, "in"))
-
-  map_sites %>%
-    #si_save(
-    ggsave(
-      filename = file.path(
-        dir_graphics, glue("NIGERIA - {curr_pd} PMTCT Facilities map.png")),
-      plot = .,
-      units = 'in',
-      width = 10,
-      height = 5.5)
-
-  # Map - Site Summary by Community ----
-
-  map_com_sites <- basemap +
-    geom_sf(data = spdf_cntry, size = 1.5, fill = NA, color = grey10k) +
-    geom_sf(data = spdf_com_sites,
-            aes(fill = pmtct_sites),
-            color = grey10k, size = .1,
-            show.legend = T, na.rm = T) +
-    geom_sf_text(data = spdf_psnu, aes(label = name), size = 3, color = usaid_black) +
-    geom_sf(data = spdf_psnu, size = .2, fill = NA, color = grey40k) +
-    geom_sf(data = spdf_cntry, size = .5, fill = NA, color = grey60k) +
-    scale_fill_si(palette = "burnt_siennas", na.value = NA,
-                  breaks = seq(0, max(spdf_com_sites$pmtct_sites, na.rm = T), 5),
-                  limits = c(0, max(spdf_com_sites$pmtct_sites, na.rm = T))) +
-    labs(x = "", y = "",
-         title = glue("PMTCT Facilities by PSNU/Communities")
-         #subtitle = glue("**Note**: DOD Facilities are not displayed")
-         ) +
-    si_style_map() +
-    theme(plot.title = element_markdown(size = 14, hjust = 0.04),
-          plot.subtitle = element_markdown(size = 12, hjust = .5),
-          legend.title = element_blank(),
-          legend.position = "top",
-          legend.key.height = unit(.1, "in"),
-          legend.key.width = unit(1, "in"))
-
-  map_com_sites %>%
-    ggsave(
-      filename = file.path(
-        dir_graphics, glue("NIGERIA - {curr_pd} PMTCT Facilities by Cummunity map.png")),
-      plot = .,
-      units = 'in',
-      width = 10,
-      height = 5.5)
-
-  # Map - Site Summary by PSNU ----
-
-  map_psnu_sites <- basemap +
-    geom_sf(data = spdf_cntry, size = 1.5, fill = NA, color = grey10k) +
-    geom_sf(data = spdf_psnu_sites,
-            aes(fill = pmtct_sites),
-            color = grey10k, size = .1,
-            show.legend = T, na.rm = T) +
-    geom_sf_text(data = spdf_psnu_sites,
-                 aes(label = paste0(name, "\n(", pmtct_sites, ")"),
-                     color = psnu_label_color),
-                 size = 2) +
-    geom_sf(data = spdf_psnu, size = .2, fill = NA, color = grey40k) +
-    geom_sf(data = spdf_cntry, size = .5, fill = NA, color = grey60k) +
-    scale_fill_si(palette = "burnt_siennas", na.value = NA,
-                  breaks = seq(0, max(spdf_psnu_sites$pmtct_sites, na.rm = T), 50),
-                  limits = c(0, max(spdf_psnu_sites$pmtct_sites, na.rm = T))) +
-    scale_color_identity() +
-    labs(x = "", y = "",
-         title = glue("PMTCT Facilities by State")
-         #subtitle = glue("**Note**: DOD Facilities are not displayed")
-    ) +
-    si_style_map() +
-    theme(plot.title = element_markdown(size = 14, hjust = 0.04),
-          plot.subtitle = element_markdown(size = 12, hjust = .5),
-          legend.title = element_blank(),
-          legend.position = "top",
-          legend.key.height = unit(.1, "in"),
-          legend.key.width = unit(1, "in"))
-
-  map_psnu_sites %>%
-    ggsave(
-      filename = file.path(
-        dir_graphics, glue("NIGERIA - {curr_pd} PMTCT Facilities by PSNU map.png")),
-      plot = .,
-      units = 'in',
-      width = 10,
-      height = 5.5)
 
 
   # -----
@@ -655,31 +530,7 @@
     max(., na.rm = T) %>%
     plyr::round_any(., stat_breaks_bin)
 
-  #map_pmtct_stat <-
-  # basemap +
-  #   geom_sf(data = spdf_com_stat %>%
-  #             filter(metric == "stat_cov_breaks") %>%
-  #             mutate(
-  #               value = factor(
-  #                 value,
-  #                 labels = c("NA", "<50%", "50-75%", "75-95%", "95+", "Other"))
-  #             ) %>% dview(),
-  #           aes(fill = value),
-  #           size = .2, color = grey10k) +
-  #   geom_sf(data = spdf_cntry, size = 1.5, fill = NA, color = grey10k) +
-  #   geom_sf(data = spdf_psnu, size = .3, fill = NA, color = grey40k) +
-  #   geom_sf(data = spdf_cntry, size = .5, fill = NA, color = grey60k) +
-  #   geom_sf_text(data = spdf_psnu, aes(label = name), size = 3.5, color = grey10k, fontface = "bold") +
-  #   geom_sf_text(data = spdf_psnu, aes(label = name), size = 3, color = usaid_black) +
-  #   scale_fill_si(palette = "genoas", discrete = T) +
-  #   labs(x = "", y = "",
-  #        title = "NIGERIA - PMTCT",
-  #        subtitle = "% PMTCT STAT") +
-  #   facet_wrap(~metric, nrow = 1) +
-  #   si_style_map() +
-  #   theme(legend.title = element_blank(),
-  #         legend.key.height = unit(.1, "in"),
-  #         legend.key.width = unit(1, "in"))
+
 
   stat_labels <- c("# ELIGIBLE FOR TESTING", "# ACTUALLY TESTED")
   names(stat_labels) <- c("stat_d", "stat")
@@ -799,39 +650,14 @@
 
   # Bar plot - HTS ----
 
-  df_psnu_stat_viz <- df_psnu_stat %>%
-    filter(metric %in% c("stat", "stat_nn")) %>%
-    group_by(psnu) %>%
-    mutate(total = sum(value, na.rm = T),
-           stat = value[metric == "stat"],
-           stat_nn = value[metric == "stat_nn"],
-           prop = stat / total,
-           label = paste0("<span style='color: ",
-                          ifelse(psnu %in% usaid_psnus, usaid_red,
-                                 ifelse(psnu %in% cdc_psnus, usaid_blue,
-                                        usaid_darkgrey)),"';>",
-                          psnu,
-                          " (", comma(total),
-                          ")</span>")) %>%
-    ungroup()
-
-  bars_pmtct_stat <- df_psnu_stat_viz %>%
-    ggplot(aes(reorder(label, prop), value, fill = metric)) +
-    geom_col(position = position_fill(reverse = T), show.legend = F, width = .9) +
+  bars_pmtct_stat <- df_com_stat %>%
+    ggplot(aes(reorder(community, stat_cov), stat_cov)) +
+    geom_col(fill = scooter_med, show.legend = F, width = .9) +
     geom_hline(yintercept = c(.25, .50, .75), size = 1, color = grey10k) +
-    geom_text(data = df_psnu_stat_viz %>% filter(metric == "stat"),
-              aes(x = reorder(label, prop), y = prop,
-                  #label = paste0(comma(stat), " - ", percent(prop, .1)))
-                  label = percent(prop, 1)
-                  ),
+    geom_text(aes(label = percent(stat_cov, 1)),
               color = grey90k, size = 4, fontface = "bold",
               hjust = 1.1, vjust = .5) +
-    annotate(geom = "rect", xmin = .45, xmax = 6.41, ymin = 0, ymax = .1,
-             fill = grey10k, alpha = .8) +
-    annotate(geom = "text", x = 3.5, y = .05, label = "STATES\nwith\n<95%",
-             color = "white", size = 10, fontface = "bold",) +
-    scale_color_identity() +
-    scale_fill_manual(values = c(scooter_light, grey20k)) +
+    #scale_fill_manual(values = c(scooter_light, grey20k)) +
     scale_y_continuous(expand = c(0, 0), labels = percent, position = "right") +
     coord_flip() +
     labs(x = "", y = "") +
@@ -842,51 +668,34 @@
 
   bars_pmtct_stat +
     plot_annotation(
-      #title = "HIV+ PREGNANT WOMEN LINKED TO TREATMENT",
+      title = "EDO - PMTCT TESTING AT COMMUNITY LEVEL",
       subtitle = paste0(
         "As of ", curr_pd, ", **",
-        percent(ou_pmtct$stat / ou_pmtct$stat_d, 1),
-        "** have been tested, with ",
-        "<span style='color:", usaid_red, "'>USAID</span> & ",
-        "<span style='color:", usaid_blue, "'>CDC</span> having states below the OU level"
-      ),
-      theme = theme(plot.subtitle = element_markdown(size = 20),
+        percent(psnu_pmtct$stat / psnu_pmtct$stat_d, 1),
+        "** of the pregnant women have been tested at ANC1 in **EDO** State",
+        "<br/>With only **", percent(psnu_pmtct$stat_d / stat_dd, 1), "** the state's pregnant women showing up at PEPFAR Supported Facilities"),
+      theme = theme(plot.title = element_markdown(size = 20),
+                    plot.subtitle = element_markdown(size = 16),
                     text = element_text(size = 4)))
 
-  si_save(filename = file.path(dir_graphics, glue("NIGERIA - {curr_pd} PMTCT HIV Testing Bars Plot.png")),
+  ggsave(filename = file.path(dir_graphics, glue("NIGERIA - {curr_pd} EDO STATE - PMTCT HIV Testing Bars Plot.png")),
           plot = last_plot())
 
   # Bar plot - HIV+ ----
 
-  df_psnu_stat_pos_viz <- df_psnu_stat %>%
-    filter(metric %in% c("stat_np", "stat_pos")) %>%
-    group_by(psnu) %>%
-    mutate(total = sum(value, na.rm = T),
-           pos = value[metric == "stat_pos"],
-           prop = pos / total,
-           label = paste0("<span style='color: ",
-                          ifelse(psnu %in% usaid_psnus, usaid_red,
-                                 ifelse(psnu %in% cdc_psnus, usaid_blue,
-                                        usaid_darkgrey)),"';>",
-                          psnu,
-                          " (", comma(pos),
-                          ")</span>")) %>%
-    ungroup()
-
-  bars_pmtct_stat_pos <- df_psnu_stat_pos_viz %>%
-    ggplot(aes(reorder(label, prop), value, fill = metric)) +
-    geom_col(position = position_fill(reverse = T), show.legend = F) +
-    geom_hline(yintercept = seq(0, .1, .02), size = 1, color = grey10k) +
-    geom_text(data = df_psnu_stat_pos_viz %>% filter(metric == "stat_pos"),
-              aes(x = reorder(label, prop), y = prop, label = percent(prop, .1)),
-              color = grey10k, size = 3, fontface = "bold",
+  bars_pmtct_stat_pos <- df_com_stat %>%
+    filter(!is.na(stat_yield)) %>%
+    ggplot(aes(reorder(community, stat_yield), stat_yield)) +
+    geom_col(fill = burnt_sienna_light, show.legend = F) +
+    geom_hline(yintercept = seq(0, .06, .01), size = 1, color = "white") +
+    geom_text(aes(label = percent(stat_yield, .1)),
+              color = "white", size = 4, fontface = "bold",
               hjust = 1.2, vjust = .5) +
     scale_color_identity() +
-    scale_fill_manual(values = c(burnt_sienna, grey20k)) +
     scale_y_continuous(expand = c(0, 0),
                        labels = percent,
                        position = "right",
-                       breaks = seq(0, .1, .01)) +
+                       breaks = seq(0, .06, .01)) +
     coord_flip(ylim = c(0, .1)) +
     labs(x = "", y = "") +
     si_style_xgrid() +
@@ -896,51 +705,31 @@
 
   bars_pmtct_stat_pos +
     plot_annotation(
-      #title = "HIV+ PREGNANT WOMEN",
+      title = "EDO - PMTCT TESTING AT COMMUNITY LEVEL",
       subtitle = paste0(
         "As of ", curr_pd, ", **",
         percent(ou_pmtct$stat_yield, .1),
-        "** of pregnant women tested are HIV+<br/>",
-        "<span style='color:", usaid_red, "'>USAID</span> & ",
-        "<span style='color:", usaid_blue, "'>CDC</span> have multiple states with >2% HIV+"
+        "** of pregnant women tested were HIV+"
       ),
-      theme = theme(plot.subtitle = element_markdown(size = 20),
+      theme = theme(plot.title = element_markdown(size = 20),
+                    plot.subtitle = element_markdown(size = 16),
                     text = element_text(size = 4),
                     axis.text = element_markdown(size = 20, color = usaid_black)))
 
-  si_save(filename = file.path(dir_graphics, glue("NIGERIA - {curr_pd} PMTCT HIV Positive Bars Plot.png")),
+  ggsave(filename = file.path(dir_graphics, glue("NIGERIA - {curr_pd} EDO STATE - PMTCT HIV Positive Bars Plot.png")),
           plot = last_plot())
 
 
   # Bar plot - HIV+ to ART ----
 
-  df_psnu_stat_linkage <- df_psnu_stat %>%
-    filter(metric %in% c("stat_pos", "art", "art_cov")) %>%
-    group_by(psnu) %>%
-    mutate(total = value[metric == "art"],
-           prop = value[metric == "art_cov"],
-           pos = value[metric == "stat_pos"],
-           label = paste0("<span style='color: ",
-                          ifelse(psnu %in% usaid_psnus, usaid_red,
-                                 ifelse(psnu %in% cdc_psnus, usaid_blue,
-                                        usaid_darkgrey)),"';>",
-                          psnu,
-                          " (", comma(total),
-                          ")</span>")) %>%
-    ungroup() %>%
-    filter(metric == "art_cov")
-
-  bars_pmtct_stat_linkage <- df_psnu_stat_linkage %>%
-    ggplot(aes(reorder(label, prop))) +
-    #geom_col(aes(y = 1), fill = trolley_grey_light, show.legend = F) +
-    geom_col(aes(y = prop), fill = scooter_med, show.legend = F) +
+  bars_pmtct_stat_linkage <- df_com_stat %>%
+    filter(!is.na(art_cov)) %>%
+    ggplot(aes(reorder(community, art_cov), art_cov)) +
+    geom_col(fill = genoa_light, show.legend = F) +
     geom_hline(yintercept = seq(0, 1, .25), size = 1, color = grey10k) +
-    geom_text(data = df_psnu_stat_pos_viz %>% filter(metric == "stat_pos"),
-              aes(x = reorder(label, prop), y = prop, label = percent(prop, .1)),
+    geom_text(aes(label = percent(art_cov, .1)),
               color = grey10k, size = 3, fontface = "bold",
               hjust = 1.2, vjust = .5) +
-    scale_color_identity() +
-    scale_fill_manual(values = c(burnt_sienna, grey20k)) +
     scale_y_continuous(expand = c(0, 0),
                        labels = percent,
                        position = "right",
@@ -954,17 +743,16 @@
 
   bars_pmtct_stat_linkage +
     plot_annotation(
-      #title = "HIV+ PREGNANT WOMEN",
+      title = "EDO - PMTCT TESTING AT COMMUNITY LEVEL",
       subtitle = paste0(
         "As of ", curr_pd, ", **",
-        percent(ou_pmtct$stat_yield, .1),
-        "** of pregnant women tested are HIV+<br/>",
-        "<span style='color:", usaid_red, "'>USAID</span> & ",
-        "<span style='color:", usaid_blue, "'>CDC</span> have multiple states with >2% HIV+"
+        percent(psnu_pmtct$art_cov, .1),
+        "** of pregnant women testing HIV+ are linked to TX"
       ),
-      theme = theme(plot.subtitle = element_markdown(size = 20),
+      theme = theme(plot.title = element_markdown(size = 20),
+                    plot.subtitle = element_markdown(size = 16),
                     text = element_text(size = 4),
                     axis.text = element_markdown(size = 20, color = usaid_black)))
 
-  si_save(filename = file.path(dir_graphics, glue("NIGERIA - {curr_pd} PMTCT HIV Positive Bars Plot.png")),
+  ggsave(filename = file.path(dir_graphics, glue("NIGERIA - {curr_pd} EDO STATE - PMTCT HIV Positive Bars Plot.png")),
           plot = last_plot())

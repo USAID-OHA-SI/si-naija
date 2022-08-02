@@ -14,10 +14,211 @@
   library(scales)
   library(extrafont)
 
+## Global Variables
+
+str_msd_sites <- list(
+  # WHEN
+  "periods" = c(
+    "fiscal_year",
+    "period",
+    "period_type"
+  ),
+  # WHERE
+  "org_units" = c(
+    "orgunituid",                 # ID
+    "sitename",
+    "facilityuid",
+    "facility",
+    "sitetype",
+    "communityuid",
+    "community",
+    "psnuuid",
+    "psnu",
+    "snuprioritization",
+    "typemilitary",
+    "dreams",
+    "snu1",
+    "snu1uid",
+    "countryuid",
+    "country",
+    "operatingunituid",
+    "operatingunit"
+  ),
+  "org_sites" = c(
+    "orgunituid",                 # ID
+    "sitename",
+    "facilityuid",
+    "facility",
+    "sitetype",
+    "typemilitary",
+    "communityuid",
+    "snu1uid",
+    "psnuuid",
+    "countryuid",
+    "operatingunituid"
+  ),
+  "org_comms" = c(
+    "communityuid",
+    "community",
+    "psnuuid"
+  ),
+  "org_psnus" = c(
+    "psnuuid",
+    "psnu",
+    "snuprioritization",
+    "dreams",
+    "snu1uid"
+  ),
+  "org_snu1s" = c(
+    "snu1uid",
+    "snu1",
+    "countryuid"
+  ),
+  "org_countries" = c(
+    "countryuid",
+    "countryiso",
+    "country",
+    "operatingunituid"
+  ),
+  "org_ous" = c(
+    "operatingunituid",
+    "operatingunitiso",
+    "operatingunit"
+  ),
+  # WHAT: DataElements
+  "dataelements" = c(
+    "indicator",
+    "numeratordenom",
+    "indicatortype",
+    "disaggregate",
+    "standardizeddisaggregate",
+    "dataelement",
+    "categoryoptioncomboname",
+    "ageasentered",
+    "sex",
+    "statushiv",
+    "statustb",
+    "statuscx",
+    "hiv_treatment_status",
+    "otherdisaggregate",
+    "otherdisaggregate_sub",
+    "modality",
+    "source_name"
+  ),
+  "indicators" = c(
+    "indicator",
+    "numeratordenom",
+    "indicatortype",
+    "disaggregate",
+    "dataelement",
+    "standardizeddisaggregate",
+    "modality",
+    "source_name"
+  ),
+  # WHAT: CategoryOptionCombos
+  "disaggregates" = c(
+    "indicator",
+    "numeratordenom",
+    "indicatortype",
+    "disaggregate",
+    "disaggregate",
+    "standardizeddisaggregate",
+    "otherdisaggregate",
+    "otherdisaggregate_sub",
+    "modality",
+    "source_name"
+  ),
+  # AGES
+  "age_disaggregates" = c(
+    "fiscal_year",
+    "indicator",
+    "ageasentered",
+    "age_2018",
+    "age_2019",
+    "trendscoarse"
+  ),
+  "categoryoptioncombos" = c(
+    "indicator",
+    "numeratordenom",
+    "indicatortype",
+    "categoryoptioncomboname",
+    "ageasentered",
+    "sex",
+    "statushiv",
+    "statustb",
+    "statuscx",
+    "hiv_treatment_status",
+    "otherdisaggregate",
+    "otherdisaggregate_sub",
+    "source_name"
+  ),
+  # WHO: Mechs - AttributesOptionCombos
+  "mechanisms" = c(
+    "funding_agency",
+    "operatingunit",
+    "mech_code",                  # ID
+    "mech_name",
+    "award_number",
+    "prime_partner_name",
+    "prime_partner_duns",
+    "prime_partner_uei"
+  ),
+  "mech_partners" = c(
+    "prime_partner_uei",          # ID
+    "prime_partner_duns",         # ID
+    "prime_partner_name"
+  ),
+  "mech_awards" = c(
+    "funding_agency",
+    "operatingunit",
+    "mech_code",                  # ID
+    "mech_name",
+    "award_number",               # ID
+    "prime_partner_uei"
+  ),
+  # VALUE
+  "values" = c(
+    "targets",
+    "qtr1",
+    "qtr2",
+    "qtr3",
+    "qtr4",
+    "cumulative"
+  ),
+  # Similar to Flat Files exported from EMRs
+  "data" = c(
+    "fiscal_year",  # => Used to reshape reshape / pivot
+    "orgunituid",   # => Join to Org Hierarchy
+    "mech_code",    # => Join to AttributesOptionsCombo tbl
+    "indicator",      # DataElement key
+    "numeratordenom", # DataElement key
+    "indicatortype",  # DataElement key
+    "disaggregate",   # DataElement key
+    "dataelement",
+    "standardizeddisaggregate",
+    "categoryoptioncomboname",
+    "targets",
+    "qtr1",
+    "qtr2",
+    "qtr3",
+    "qtr4",
+    "cumulative"
+  ),
+  "data_long" = c(
+    "period",       # => Used to reshape reshape / pivot
+    "orgunituid",   # => Join to Org Hierarchy
+    "mech_code",    # => Join to AttributesOptionsCombo tbl
+    "dataelement",
+    "standardizeddisaggregate",
+    "categoryoptioncomboname",
+    "value_type",
+    "value"
+  )
+)
+
 ## FUNCTIONS ----
 
 #' @title Open Windows folders / files
-#'
 #'
 open_path <- function(path) {
   utils::browseURL(path)
@@ -44,25 +245,39 @@ datim_session <- function() {
                            base_url = "https://www.datim.org/")
 }
 
+#' @title Extract MSD Orgunits
+#'
+#'
+msd_orgunits <- function(.df_msd, fy = NULL) {
+
+  if (!is.null(fy))
+    .df_msd <- .df_msd %>% filter(fiscal_year == fy)
+
+  .df_msd %>%
+    select(one_of(col_orgs)) %>%
+    distinct()
+}
+
 
 #' @title Extract MSD Indicators
 #'
 #'
-msd_indicators <- function(.df_msd, fy) {
+msd_indicators <- function(.df_msd, fy = NULL) {
+
+  if (!is.null(fy))
+    .df_msd <- .df_msd %>% filter(fiscal_year == fy)
+
   .df_msd %>%
-    filter(fiscal_year == fy) %>%
     select(indicator, numeratordenom, indicatortype,
            disaggregate, standardizeddisaggregate,
-           #ageasentered, sex,
            statushiv, statustb, statuscx,
            statustx = hiv_treatment_status,
-           otherdisaggregate, otherdisaggregate_sub, modality, source_name) %>%
+           otherdisaggregate, otherdisaggregate_sub,
+           modality, source_name) %>%
     distinct() %>%
-    #arrange(indicator, disaggregate, ageasentered, sex) %>%
     mutate(fiscal_year = fy) %>%
     relocate(fiscal_year, .before = 1) %>%
-    arrange(indicator, disaggregate) %>%
-    distinct()
+    arrange(indicator, disaggregate)
 }
 
 #' @title Extract MSD Mechanisms
