@@ -1460,7 +1460,7 @@ get_prioritization <- function(df_nat,
 
   df_nat %>%
     filter(fiscal_year == fy,
-           countryname == country,
+           country == country,
            snuprioritization != "Missing") %>%
     select(psnuuid, psnu, snuprioritization) %>%
     distinct() %>%
@@ -1486,7 +1486,7 @@ set_prioritization <- function(df_nat,
 
   # Country
   if(!is.null(cntry))
-    df_nat <- df_nat %>% filter(countryname == cntry)
+    df_nat <- df_nat %>% filter(country == cntry)
 
   # Update prioritization
   df_nat %>%

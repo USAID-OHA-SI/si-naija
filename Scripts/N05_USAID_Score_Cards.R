@@ -37,9 +37,9 @@
 
   library(showtext)
 
-  # font_add(family = "FontAwesome5Free-Solid", regular = paste0(si_path("path_downloads"), "fa-solid-900.ttf"))
-  # font_add(family = "FontAwesome5Free-Regular", regular = paste0(si_path("path_downloads"), "fa-regular-400.ttf"))
-  # font_add(family = "FontAwesome5Brands-Regular", regular = paste0(si_path("path_downloads"), "fa-brands-400.ttf"))
+  font_add(family = "FontAwesome5Free-Solid", regular = paste0(si_path("path_downloads"), "fa-solid-900.ttf"))
+  font_add(family = "FontAwesome5Free-Regular", regular = paste0(si_path("path_downloads"), "fa-regular-400.ttf"))
+  font_add(family = "FontAwesome5Brands-Regular", regular = paste0(si_path("path_downloads"), "fa-brands-400.ttf"))
 
   showtext_auto()
 
@@ -68,17 +68,17 @@
   # Files ----
   file_msd_sites <- return_latest(
     folderpath = dir_merdata,
-    pattern = "Site_IM_FY19-22_.*_N.*"
+    pattern = "Site_IM_FY20.*_N.*"
   )
 
   file_msd_psnu <- return_latest(
     folderpath = dir_merdata,
-    pattern = "PSNU_IM_FY19-22_.*_N.*"
+    pattern = "PSNU_IM_FY20.*_N.*"
   )
 
   file_msd_nat <- return_latest(
     folderpath = dir_merdata,
-    pattern = "NAT_SUBNAT_FY15-22.*"
+    pattern = "NAT_SUBNAT_FY15.*"
   )
 
   file_sid <- return_latest(
@@ -449,7 +449,7 @@
   # USAID FY21 States ----
   usaid_states <- df_sites %>%
     filter(fiscal_year == curr_fy,
-           fundingagency == agency,
+           funding_agency == agency,
            psnu %ni% c("_Military Nigeria",
                        "Data reported above PNSU Level")) %>%
     distinct(psnu) %>%
@@ -478,14 +478,14 @@
   # Prio + Pops ----
 
   # Prioritization
-  df_prio <- get_prioritization(df_nat, 2021, cntry)
+  df_prio <- get_prioritization(df_nat, curr_fy, cntry)
 
   # Pops
 
   #pops <- datim_pops(ou = cntry, fy = curr_fy, level = "psnu")
 
   pops <- df_nat %>%
-    filter(countryname == cntry,
+    filter(country == cntry,
            indicator %in% c("POP_EST", "PLHIV"),
            standardizeddisaggregate == "Age/Sex") %>%
     rename(value = targets)
@@ -548,12 +548,12 @@
   # HTS TESTING ----
   df_sites %>%
     filter(fiscal_year == curr_fy,
-           fundingagency == agency,
+           funding_agency == agency,
            indicator %in% c("HTS_TST", "HTS_TST_POS")) %>%
     distinct(standardizeddisaggregate)
 
   df_hts_all <- df_sites %>%
-    filter(fundingagency == agency,
+    filter(funding_agency == agency,
            indicator %in% c("HTS_TST", "HTS_TST_POS"),
            standardizeddisaggregate == "Modality/Age/Sex/Result")
 
@@ -596,7 +596,7 @@
 
   # TX ----
   df_tx_all <- df_sites %>%
-    filter(fundingagency == agency,
+    filter(funding_agency == agency,
            indicator %in% c("TX_RTT", "TX_NEW", "TX_ML",
                             "TX_NET_NEW", "TX_CURR"),
            standardizeddisaggregate %in% c("Age/Sex/HIVStatus",
@@ -625,7 +625,7 @@
 
   # TX_CURR HISTORY by LGA ----
   df_tx_lga_all <- df_sites %>%
-    filter(fundingagency != "DEDUP",
+    filter(funding_agency != "DEDUP",
            community != "Data reported above Community Level",
            indicator == "TX_CURR",
            standardizeddisaggregate %in% c("Age/Sex/HIVStatus")) %>%
@@ -648,7 +648,7 @@
   # VLC/S ----
   df_vl_all <- df_sites %>%
     filter(
-      fundingagency == agency,
+      funding_agency == agency,
       community != "Data reported above Community Level",
       indicator %in% c("TX_PVLS", "TX_CURR"),
       standardizeddisaggregate %in% c("Age/Sex/HIVStatus", "Age/Sex/Indication/HIVStatus")
@@ -793,21 +793,31 @@
               by = c("uid" = "communityuid")) %>%
     filter(!is.na(value))
 
-  tx_curr_map <- tx_map(spdf = spdf_lga_tx,
-                        spdf_states = spdf_adm1,
-                        cat = "Children")
+  spdf_lga_tx <- spdf_adm2 %>%
+    left_join(df_tx_lga_all %>%
+                filter(period == curr_pd),
+              by = c("uid" = "communityuid")) %>%
+    filter(!is.na(value))
 
   tx_curr_map <- tx_map(spdf = spdf_lga_tx,
                         spdf_states = spdf_adm1,
-                        cat = "Adult Female")
+                        cat = "Children",
+                        pd = curr_pd)
 
   tx_curr_map <- tx_map(spdf = spdf_lga_tx,
                         spdf_states = spdf_adm1,
-                        cat = "Adult Male")
+                        cat = "Adult Female",
+                        pd = curr_pd)
+
+  tx_curr_map <- tx_map(spdf = spdf_lga_tx,
+                        spdf_states = spdf_adm1,
+                        cat = "Adult Male",
+                        pd = curr_pd)
 
   tx_curr_map <- tx_map(spdf = spdf_lga_tx,
                         spdf_states = spdf_adm1,
                         cat = "All",
+                        pd = curr_pd,
                         lsize = 22)
 
   ggsave("./Graphics/ScoreCard_TX_CURR_Distribution_IkwaIbom.png",
@@ -819,9 +829,21 @@
 
 
   usaid_states %>%
-    map(~tx_map(spdf = spdf_lga_tx,
-               spdf_states = spdf_adm1,
-               state = .x))
+    map(function(.x) {
+      m <- tx_map(spdf = spdf_lga_tx,
+                  spdf_states = spdf_adm1,
+                  state = .x,
+                  cat = "All",
+                  pd = curr_pd,
+                  lsize = 40)
+
+      print(m)
+
+      ggsave(filename = file.path(
+        dir_graphics,
+        glue("{curr_pd} - Nigeria - USAID - {.x} - TX_CURR Distribution by LGA_{curr_date()}.png")),
+        plot = m)
+    })
 
 
 
