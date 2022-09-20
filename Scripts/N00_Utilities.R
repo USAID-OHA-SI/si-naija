@@ -769,7 +769,7 @@ unpack_tx_ml <- function(.data,
   ind <- "TX_ML"
   disag <- "Age/Sex/ARTNoContactReason/HIVStatus"
 
-  if (ind %ni% .data $indicator | disag %ni% .data$standardizeddisaggregate) {
+  if (ind %ni% .data$indicator | disag %ni% .data$standardizeddisaggregate) {
     print(paste0(ind, " :: ", disag))
     stop("Missing required values from the dataset's indicator or disaggs")
   }
@@ -784,12 +784,12 @@ unpack_tx_ml <- function(.data,
            indicator = case_when(
              indicator == 'Transferred Out' ~ 'TX_ML_XFRED_OUT',
              indicator == 'IIT <3 Months' ~ 'TX_ML_IIT_LT3M',
-             indicator == 'IIT 3+ Months' ~ 'TX_ML_IIT_3MPLUS',
+             indicator == 'IIT 3-5 Months' ~ 'TX_ML_IIT_3to5M',
+             indicator == 'IIT 6+ Months' ~ 'TX_ML_IIT_6MPLUS',
              indicator == 'Refused Stopped' ~ 'TX_ML_REF_STOPPED',
              indicator == 'Died' ~ 'TX_ML_DIED',
              TRUE ~ 'TX_ML_OTHER'
            )) %>%
-    #group_by(...) %>%
     group_by_at(vars(all_of(cols_grp))) %>%
     summarise(across(all_of(sum_vars), sum, na.rm = TRUE), .groups = "drop")
 
@@ -841,6 +841,7 @@ tx_nocontact <- function(.data,
     'TX_ML',
     'TX_NET_NEW')
 
+  # ML
   ind_levels1 <- c(
     'TX_CURR_LAG1',
     'TX_NEW',
@@ -850,6 +851,7 @@ tx_nocontact <- function(.data,
     'TX_CURR',
     'TX_NET_NEW')
 
+  # IIT
   ind_levels2 <- c(
     'TX_CURR_LAG1',
     'TX_NEW',
@@ -868,7 +870,8 @@ tx_nocontact <- function(.data,
     'TX_RTT',
     'TX_CURR_ADJ',
     'TX_ML_IIT_LT3M',
-    'TX_ML_IIT_3MPLUS',
+    'TX_ML_IIT_3to5M',
+    'TX_ML_IIT_6MPLUS',
     'TX_ML_XFRED_OUT',
     'TX_ML_REF_STOPPED',
     'TX_ML_DIED',
@@ -892,7 +895,8 @@ tx_nocontact <- function(.data,
   } else {
     df_tx <- .data %>%
       filter(indicator %in% inds[inds != "TX_ML"] &
-               standardizeddisaggregate == "Age/Sex/HIVStatus" |
+               #standardizeddisaggregate == "Age/Sex/HIVStatus" |
+               standardizeddisaggregate == "Total Numerator" |
              indicator == "TX_ML" &
                standardizeddisaggregate == "Age/Sex/ARTNoContactReason/HIVStatus")
   }
@@ -1007,16 +1011,18 @@ tx_ml_colors <- function(.data) {
         str_detect(indicator, "TX_ML") ~ -1 * value,
         TRUE ~ value
       ),
+      # label_value2 = case_when(
+      #   indicator == "TX_CURR" ~ paste0(comma(value[indicator=="TX_CURR"]), "\n", comma(value[indicator=="TX_NET_NEW"]), " NN"),
+      #   TRUE ~ comma(value)
+      # ),
       label_changes = case_when(
         str_detect(indicator, "NEW|RTT") ~ str_remove(indicator, "TX_"),
         indicator == "TX_ML" ~ str_remove(indicator, "TX_"),
-        #indicator == "TX_ML_IIT" ~ "ITT",
-        #indicator == "TX_ML_IIT_LT3M" ~ "ITT <3mo",
-        #indicator == "TX_ML_IIT_3MPLUS" ~ "ITT 3mo+",
         str_detect(indicator, "XFR") ~ "XFR-OUT",
         str_detect(indicator, "REF") ~ "R-STOP",
-        str_detect(indicator, "IIT_LT3M") ~ "ITT <3mo",
-        str_detect(indicator, "IIT_3MPLUS") ~ "ITT 3mo+",
+        str_detect(indicator, "IIT_LT3M") ~ "IIT <3mo",
+        str_detect(indicator, "IIT_3to5M") ~ "IIT 3-5mo",
+        str_detect(indicator, "IIT_6MPLUS") ~ "IIT 6mo+",
         str_detect(indicator, "ADJ") ~ "ADJ",
         str_detect(indicator, "TX_ML_.*") ~ str_remove(indicator, "TX_ML_"),
         TRUE ~ ""
@@ -1040,7 +1046,7 @@ tx_ml_colors <- function(.data) {
         indicator == "TX_NEW" ~ lag(value, 1),
         indicator == "TX_RTT" ~ lag(cumsum(value), 1),
         str_detect(indicator, "TX_ML") ~ value[indicator == "TX_CURR_ADJ"] - cumsum(ifelse(str_detect(indicator, "TX_ML"), value, 0)),
-        indicator == "TX_NET_NEW" ~ value[indicator == "TX_CURR_LAG1"],
+        indicator == "TX_NET_NEW" ~ first(value),#value[indicator == "TX_CURR_LAG1"],
         TRUE ~ value
       ),
       ymax = case_when(
@@ -1105,6 +1111,7 @@ tx_ml_bars <- function(.data, lsize = 6, ...) {
     geom_text(aes(x = as.integer(indicator),
                   y = ymax,
                   label = comma(label_value)),
+                  #label = label_value2),
               size = lsize,
               color = usaid_black,
               vjust = -1) +
@@ -1121,24 +1128,24 @@ tx_ml_bars <- function(.data, lsize = 6, ...) {
                      yend = ymin),
                  size = 1,
                  color = grey10k) +
-    geom_curve(data = df_nn,
-               aes(x = as.integer(indicator) - 1 - (w/2),
-                   xend = as.integer(indicator) - 1 - (w/2),
-                   y = ymin - value,
-                   yend = ymin + (value / 2)),
-               arrow = arrow(length = unit(0.1, "inches"), type = "closed"),
-               curvature = -0.5,
-               #angle = 90,
-               size = 1,
-               color = grey10k) +
-    geom_text(data = df_nn,
-              aes(x = as.integer(indicator) - 1,
-                  y = ymin - value,
-                  label = paste0("NN\n", comma(value))),
-              size = lsize,
-              color = grey10k) +
+    # geom_curve(data = df_nn,
+    #            aes(x = as.integer(indicator) - 1 - (w/2),
+    #                xend = as.integer(indicator) - 1 - (w/2),
+    #                y = ymin - value,
+    #                yend = ymin + (value / 2)),
+    #            arrow = arrow(length = unit(0.1, "inches"), type = "closed"),
+    #            curvature = -0.5,
+    #            size = 1,
+    #            color = grey10k) +
+    # geom_text(data = df_nn,
+    #           aes(x = as.integer(indicator) - 1,
+    #               y = ymin - value,
+    #               label = paste0("NN\n", comma(value))),
+    #           size = lsize,
+    #           color = grey10k) +
     scale_fill_identity() +
     scale_x_discrete(limits = xlim_labels) +
+    scale_y_continuous(expand = expansion(mult=c(.1,.1))) +
     facet_wrap(vars(...)) +
     labs(x = "", y = "") +
     si_style_nolines() +
