@@ -7,6 +7,7 @@
 # PACKAGES ----
 library(tidyverse)
 library(glamr)
+library(grabr)
 
 # DIRS
 dir_merdata <- si_path(type = "path_msd")
@@ -16,6 +17,16 @@ user <- pano_user()
 pass <- pano_pwd()
 
 sess <- pano_session(username = user, password = pass)
+
+# OU
+cntry = "Nigeria"
+
+# Extract all global & Country Specific MDS
+pano_extract_msds(operatingunit = cntry,
+                  archive = TRUE,
+                  dest_path = si_path())
+
+# Specific Runs
 
 # CURRENT RUN OPTIONS ----
 msd_v <- "initial"
