@@ -48,7 +48,7 @@ set_key <- function(name,
 #'
 #' @examples
 #' \dontrun{
-#' get_key(service = "pano", key = "email")
+#' get_key(key = "email", service = "pano")
 #' }
 #'
 get_key <- function(name = "email",
@@ -70,7 +70,7 @@ get_key <- function(name = "email",
     return(NULL)
   }
 
-  record <- keys %>% filter(username == name)
+  record <- dplyr::filter(keys, username == name)
 
   if (is.null(record) | nrow(record) == 0) {
     if (verbose) {

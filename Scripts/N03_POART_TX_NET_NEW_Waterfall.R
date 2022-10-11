@@ -21,7 +21,8 @@
 
 ## GLOBALS ----
 
-  dir_merdata <- glamr::si_path("path_msd")
+  dir_merdata <- si_path("path_msd")
+  dir_geodata <- si_path("path_vector")
   dir_data <- "Data"
   dir_dataout <- "Dataout"
   dir_graphics <- "Graphics"

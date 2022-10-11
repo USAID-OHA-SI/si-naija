@@ -18,20 +18,25 @@ pass <- pano_pwd()
 
 sess <- pano_session(username = user, password = pass)
 
+return_latest(si_path(), "MSD_PSNU_IM") %>%
+  gophr::read_msd()
+
 # OU
 cntry = "Nigeria"
 
 # Extract all global & Country Specific MDS
 pano_extract_msds(operatingunit = cntry,
                   archive = TRUE,
-                  dest_path = si_path())
+                  dest_path = dir_merdata,
+                  username = user,
+                  password = pass)
 
 # Specific Runs
 
 # CURRENT RUN OPTIONS ----
-msd_v <- "initial"
-fy <- 2021
-qtr <- 4
+msd_v <- "clean"
+fy <- 2022
+qtr <- 3
 org_level <- "psnu"
 
 # DATA ----
@@ -44,9 +49,10 @@ items <- pano_extract(item = "mer",
                       unpack = TRUE)
 
 # DOWNLOAD GLOBAL DATASETS ----
+
 items %>%
   filter(type == "file zip_file",
-         parent == "MER FY2021 Q4 Pre-Cleaning") %>%
+         parent == "MER FY2022 Q3 Clean") %>%
   pull(path) %>%
   walk(~pano_download(item_url = .x,
                       session = sess,
