@@ -715,6 +715,25 @@ group_agesex <- function(.data) {
     relocate(category, .before = age)
 }
 
+
+#' @title Categorize age groups
+#'
+#'
+group_ages <- function(.df_msd) {
+
+  .df_msd %>%
+    mutate(
+      age_group = case_when(
+        ageasentered %in% c("<01", "01-04", "05-09", "10-14") ~ "<15",
+        ageasentered %in% c("15-19") ~ "15-19",
+        ageasentered %in% c("20-24") ~ "20-24",
+        ageasentered %in% c("25-29", "30-34", "35-39", "40-44", "45-49",
+                            "50+", "50-54", "55-59", "60-64", "65+") ~ "25+",
+        TRUE ~ ageasentered
+      )) %>%
+    relocate(age_group, .after = ageasentered)
+}
+
 #' @title Ellipsis
 #'
 test_ellipsis <- function(...) {
