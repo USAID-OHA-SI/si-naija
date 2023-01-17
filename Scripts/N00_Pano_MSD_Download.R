@@ -6,6 +6,7 @@
 
 # PACKAGES ----
 library(tidyverse)
+library(grabr)
 library(glamr)
 
 # DIRS
@@ -18,10 +19,13 @@ pass <- pano_pwd()
 sess <- pano_session(username = user, password = pass)
 
 # CURRENT RUN OPTIONS ----
-msd_v <- "initial"
-fy <- 2021
+msd_v <- "final"
+fy <- 2022
 qtr <- 4
 org_level <- "psnu"
+
+# OU
+cntry <- "Nigeria"
 
 # DATA ----
 items <- pano_extract(item = "mer",
@@ -43,6 +47,11 @@ items %>%
 
 
 # DOWNLOAD COUNTRY DATASETS ----
+
+# All country datasets
+pano_extract_msds(operatingunit = cntry,
+                  archive = TRUE,
+                  dest_path = si_path())
 
 # Site
 pano_extract_msd(operatingunit = cntry,

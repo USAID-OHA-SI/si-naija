@@ -46,7 +46,7 @@
   ## Files ----
 
   file_site_im <- dir_merdata %>%
-    glamr::return_latest(pattern = "Site_IM_FY20.*_Nig")
+    glamr::return_latest(pattern = "Site_IM_FY20.*_Nig", recursive = T)
 
   file_psnu_im <- dir_merdata %>%
     glamr::return_latest(pattern = "PSNU_IM_FY20.*_Nig")
@@ -69,6 +69,7 @@
     str_extract("\\d{2}-\\d{2}-\\d{4}") %>%
     dmy()
 
+  # Get last day of the previous month
   rep_end_date <- rollback(file_date)
 
 
@@ -271,6 +272,9 @@
 
 # IMPORT Datasets ----
 
+  # df_site <- file_site_im %>%
+  #   read_msd()
+  #
   # df_psnu <- file_psnu_im %>%
   #   read_msd() %>%
   #   filter(fiscal_year == curr_fy,
@@ -305,7 +309,7 @@
       .cols = everything()) %>%
     rename_with(~str_trim(., side = "both")) %>%
     rename(lga = `L.G.A`) %>%
-    janitor::clean_names()
+    clean_names()
 
   df_cols <- df_cols %>%
     mutate(name = names(df_radet))
