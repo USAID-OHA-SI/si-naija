@@ -3,6 +3,7 @@
 ##  PURPOSE: PANO Data Extraction
 ##  LICENCE: MIT
 ##  DATE:    2021-11-22
+##  UPDATED: 2023-02-18
 
 # PACKAGES ----
 library(tidyverse)
@@ -19,13 +20,10 @@ pass <- pano_pwd()
 
 sess <- pano_session(username = user, password = pass)
 
-return_latest(si_path(), "MSD_PSNU_IM") %>%
-  gophr::read_msd()
-
 # OU
 cntry = "Nigeria"
 
-# Extract all global & Country Specific MDS
+# Extract all global & Country Specific MSD
 pano_extract_msds(operatingunit = cntry,
                   archive = TRUE,
                   dest_path = dir_merdata,

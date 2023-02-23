@@ -14,7 +14,7 @@
   library(scales)
   library(extrafont)
 
-## Global Variables
+## Global Variables ----
 
 str_msd_sites <- list(
   # WHEN
