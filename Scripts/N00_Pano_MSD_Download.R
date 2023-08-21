@@ -22,6 +22,8 @@
 
   sess <- grabr::pano_session(username = user, password = pass)
 
+# OU Specific MSDs
+
   # OU
   cntry = "Nigeria"
 
@@ -32,7 +34,7 @@
                     username = user,
                     password = pass)
 
-# Specific Runs
+
 
 # CURRENT RUN OPTIONS ----
 
