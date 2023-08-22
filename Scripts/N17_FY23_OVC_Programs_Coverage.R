@@ -327,7 +327,8 @@
     scale_color_identity() +
     labs(x = "", y = "", caption = caption) +
     si_style_map() +
-    theme(legend.position = "top", legend.title = element_blank(),
+    theme(legend.position = "top",
+          legend.title = element_blank(),
           legend.key.width = ggplot2::unit(3.5, "cm"),
           legend.key.height = ggplot2::unit(.5, "cm"))
 
@@ -352,9 +353,7 @@
       columns = 3:7,
       missing_text = "-"
     ) %>%
-    fmt_integer(columns = 3:7,
-               rows = everything(),
-               )
+    fmt_integer(columns = 3:7, rows = everything())
 
 
   # OVC STAT / COV
