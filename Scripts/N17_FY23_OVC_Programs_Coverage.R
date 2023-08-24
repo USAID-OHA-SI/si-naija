@@ -112,11 +112,33 @@
            psnu %in% df_cov$psnu,
            fiscal_year == meta$curr_fy,
            indicator == "PLHIV",
-           standardizeddisaggregate == "Age/Sex/HIVStatus",
-           trendscoarse == "<15") %>%
+           standardizeddisaggregate == "Age/Sex/HIVStatus") %>%
+    mutate(
+      agecoarse = case_when(
+        ageasentered %in% c("<01", "01-04", "05-09", "10-14") ~ "<15",
+        ageasentered == "15-19" ~ "15-19",
+        TRUE ~ "20+"
+      )
+    ) %>%
     summarise(across(targets, \(x) sum(x, na.rm = T)),
-              .by = c(psnuuid, psnu)) %>%
+              .by = c(psnuuid, psnu, agecoarse)) %>%
     rename(plhiv = targets)
+
+  df_hiv <- df_hiv %>%
+    filter(agecoarse != "20+") %>%
+    summarise(across(plhiv, \(x) sum(x, na.rm = T)),
+              .by = c(psnuuid, psnu)) %>%
+    mutate(agecoarse = "<20") %>%
+    bind_rows(df_hiv, .) %>%
+    filter(agecoarse != "20+") %>%
+    mutate(agecoarse = str_replace(agecoarse, "<", "u"),
+           agecoarse = str_replace(agecoarse, "[+]", "plus"),
+           agecoarse = paste0("plhiv_", agecoarse)) %>%
+    pivot_wider(
+      names_from = agecoarse,
+      values_from = plhiv
+    ) %>%
+    clean_names()
 
   # MSD - Extracts only PSNU with OVC Indicators
 
@@ -128,40 +150,83 @@
            psnu %in% df_cov$psnu,
            fiscal_year == meta$curr_fy,
            indicator == "TX_CURR",
-           standardizeddisaggregate == "Age/Sex/HIVStatus",
-           trendscoarse == "<15"
+           standardizeddisaggregate == "Age/Sex/HIVStatus"
     ) %>%
-    summarise(across(cumulative, \(x) sum(x, na.rm = T)),
-              .by = c(psnuuid, psnu)) %>%
-    rename(tx_curr = cumulative)
+    mutate(
+      agecoarse = case_when(
+        ageasentered %in% c("<01", "01-04", "05-09", "10-14") ~ "<15",
+        ageasentered == "15-19" ~ "15-19",
+        TRUE ~ "20+"
+      )
+    ) %>%
+    summarise(across(qtr2, \(x) sum(x, na.rm = T)),
+              .by = c(psnuuid, psnu, agecoarse)) %>%
+    rename(tx_curr = qtr2)
 
-  df_art <- df_tx %>%
-    left_join(df_hiv, by = c("psnuuid", "psnu")) %>%
-    mutate(art_coverage = tx_curr / plhiv) %>%
-    arrange(desc(art_coverage))
+  df_tx <- df_tx %>%
+    filter(agecoarse != "20+") %>%
+    summarise(across(tx_curr, \(x) sum(x, na.rm = T)),
+              .by = c(psnuuid, psnu)) %>%
+    mutate(agecoarse = "<20") %>%
+    bind_rows(df_tx, .) %>%
+    filter(agecoarse != "20+") %>%
+    mutate(agecoarse = str_replace(agecoarse, "<", "u"),
+           agecoarse = str_replace(agecoarse, "[+]", "plus"),
+           agecoarse = paste0("tx_curr_qtr2_", agecoarse)) %>%
+    pivot_wider(
+      names_from = agecoarse,
+      values_from = tx_curr
+    ) %>%
+    clean_names()
+
+
+  df_art <- df_hiv %>%
+    left_join(df_tx, by = c("psnuuid", "psnu")) %>%
+    mutate(art_coverage_u15 = tx_curr_qtr2_u15 / plhiv_u15,
+           art_coverage_u20 = tx_curr_qtr2_u20 / plhiv_u20) %>%
+    arrange(desc(art_coverage_u20))
 
   # OVC
+
   df_ovc <- df_msd %>%
     filter(funding_agency == agency,
            operatingunit == cntry,
            fiscal_year == meta$curr_fy,
-           str_detect(indicator, "OVC"),
-           source_name == "DATIM",
-           !is.na(cumulative))
+           str_detect(indicator, "OVC"))
+
+  df_ovc %>% distinct(indicator)
+
+  df_ovc %>%
+    distinct(indicator, standardizeddisaggregate,
+             otherdisaggregate, statushiv, source_name) %>%
+    arrange(indicator, standardizeddisaggregate)
 
   # OVC HIVSTAT
+
+  df_ovc %>%
+    filter(
+      indicator == "OVC_HIVSTAT",
+      standardizeddisaggregate == "Age/Sex/ReportedStatus",
+      statushiv == "Positive"
+    )
+
   df_ovcstat <- df_ovc %>%
-    filter(indicator == "OVC_HIVSTAT",
-           standardizeddisaggregate == "Age/Sex/ReportedStatus",
-           statushiv == "Positive") %>%
+    filter(
+      indicator == "OVC_HIVSTAT",
+      standardizeddisaggregate == "Age/Sex/ReportedStatus",
+      statushiv == "Positive"
+      #indicator == "OVC_HIVSTAT_POS",
+      #standardizeddisaggregate == "Total Numerator",
+    ) %>%
     mutate(agecoarse = case_when(
       ageasentered %in% c("<01", "01-04", "05-09", "10-14") ~ "<15",
       ageasentered == "15-17" ~ "15-17",
+      ageasentered == "Unknown Age" ~ "No-Age",
       TRUE ~ NA_character_
     )) %>%
-    summarise(across(cumulative, \(x) sum(x, na.rm = T)),
+    summarise(across(qtr2, \(x) sum(x, na.rm = T)),
               .by = c(psnuuid, psnu, agecoarse)) %>%
-    rename(ovc_hivstat = cumulative)
+    rename(ovc_hivstat = qtr2)
 
   df_ovcstat <- df_ovcstat %>%
     summarise(across(ovc_hivstat, \(x) sum(x, na.rm = T)),
@@ -176,38 +241,27 @@
     relocate(ovc_hivstat_u15, .after = psnu)
 
   # OVC SERV
+
   df_ovcserv <- df_ovc %>%
-    filter(indicator == "OVC_SERV",
-           standardizeddisaggregate == "Age/Sex/ProgramStatus") %>%
-    mutate(agecoarse = case_when(
-      ageasentered %in% c("<01", "01-04", "05-09", "10-14") ~ "<15",
-      ageasentered == "15-17" ~ "15-17",
-      ageasentered == "18-20" ~ "18-20",
-      TRUE ~ NA_character_
-    )) %>%
+    filter(
+      indicator %in% c("OVC_SERV_UNDER_18", "OVC_SERV_OVER_18"),
+      standardizeddisaggregate == "Total Numerator"
+    ) %>%
     summarise(across(cumulative, \(x) sum(x, na.rm = T)),
-              .by = c(psnuuid, psnu, agecoarse)) %>%
+              .by = c(psnuuid, psnu, indicator)) %>%
     rename(ovc_serv = cumulative)
 
   df_ovcserv <- df_ovcserv %>%
-    filter(agecoarse %in% c("<15", "15-17")) %>%
     summarise(across(ovc_serv, \(x) sum(x, na.rm = T)),
               .by = c(psnuuid, psnu)) %>%
-    mutate(agecoarse = "<18") %>%
+    mutate(indicator = "OVC_SERV_ALL") %>%
     bind_rows(df_ovcserv, .)
 
   df_ovcserv <- df_ovcserv %>%
-    filter(agecoarse %in% c("<18", "18-20")) %>%
-    summarise(across(ovc_serv, \(x) sum(x, na.rm = T)),
-              .by = c(psnuuid, psnu)) %>%
-    mutate(agecoarse = "all") %>%
-    bind_rows(df_ovcserv, .) %>%
-    pivot_wider(names_from = agecoarse,
-                values_from = ovc_serv,
-                names_prefix = "ovc_serv_") %>%
-    rename_with(.fn = ~str_replace(., "<", "u")) %>%
-    clean_names() %>%
-    relocate(ovc_serv_u18, .after = ovc_serv_15_17)
+    pivot_wider(names_from = indicator,
+                values_from = ovc_serv) %>%
+    rename_with(.fn = ~str_to_lower(.)) %>%
+    clean_names()
 
 
   # OVC IP Coverage
@@ -218,8 +272,8 @@
     left_join(df_ovcstat, by = c("psnuuid", "psnu")) %>%
     left_join(df_ovcserv, by = c("psnuuid", "psnu")) %>%
     mutate(
-      art_coverage = tx_curr / plhiv,
-      ovc_coverage = ovc_hivstat_u15 / tx_curr
+      ovc_coverage_u15 = ovc_hivstat_u15 / tx_curr_qtr2_u15,
+      ovc_coverage_u18 = ovc_hivstat_u18 / tx_curr_qtr2_u20
     )
 
   sfdf_ovc <- sfdf_psnu %>%
@@ -238,7 +292,7 @@
         TRUE ~ grey90k
       ),
       label_ovc_cov = case_when(
-        ovc_coverage >= .8 ~ grey10k,
+        ovc_coverage_u15 >= .8 ~ grey10k,
         TRUE ~ grey90k
       ))
 
@@ -312,18 +366,18 @@
 
   # OVC SERV
   map_ovc_serv <- basemap +
-    geom_sf(data = sfdf_ovc,
+    geom_sf(data = filter(sfdf_ovc, psnu != "Kwara"),
             aes(fill = ovc_serv_all),
             lwd = .3, color = trolley_grey_light) +
     geom_sf(data = sfdf_cntry, fill = NA, lwd = 1, color = grey90k) +
     geom_sf(data = sfdf_cntry, fill = NA, lwd = .3, color = grey10k) +
-    geom_sf_text(data = sfdf_ovc,
+    geom_sf_text(data = filter(sfdf_ovc, psnu != "Kwara"),
                  aes(label = paste(psnu, "\n", comma(ovc_serv_all)),
                      color = label_ovc_serv),
                  size = 3, fontface = "bold") +
     scale_fill_si(labels = comma,
-                  limits = c(0, 100000),
-                  breaks = c(1000, 10000, 25000, 50000, 75000, 95000)) +
+                  limits = c(0, max(sfdf_ovc$ovc_serv_all)),
+                  breaks = c(1000, 10000, 25000, 50000, 75000, 100000, 125000)) +
     scale_color_identity() +
     labs(x = "", y = "", caption = caption) +
     si_style_map() +
@@ -341,6 +395,7 @@
          units = "in")
 
   df_cov %>%
+    filter(psnu != "Kwara") %>%
     select(mech_name, psnu, starts_with("ovc_serv")) %>%
     arrange(mech_name, desc(ovc_serv_all)) %>%
     rename_with(.cols = starts_with("ovc_serv"),
@@ -350,21 +405,23 @@
     group_by(MECH_NAME) %>%
     gt() %>%
     sub_missing(
-      columns = 3:7,
+      columns = 3:last_col(),
       missing_text = "-"
     ) %>%
-    fmt_integer(columns = 3:7, rows = everything())
+    fmt_integer(columns = 3:last_col(), rows = everything())
 
 
   # OVC STAT / COV
-  map_ovc_cov <- basemap +
+
+  # Under 15
+  map_ovc_cov_u15 <- basemap +
     geom_sf(data = sfdf_ovc,
-            aes(fill = ovc_coverage),
+            aes(fill = ovc_coverage_u15),
             lwd = .3, color = trolley_grey_light) +
     geom_sf(data = sfdf_cntry, fill = NA, lwd = 1, color = grey90k) +
     geom_sf(data = sfdf_cntry, fill = NA, lwd = .3, color = grey10k) +
     geom_sf_text(data = sfdf_ovc,
-                 aes(label = paste(psnu, "\n", percent(ovc_coverage)),
+                 aes(label = paste(psnu, "\n", percent(ovc_coverage_u15)),
                      color = label_ovc_cov),
                  size = 3, fontface = "bold") +
     scale_fill_si(palette = "burnt_siennas", labels = percent,
@@ -377,10 +434,40 @@
           legend.key.width = ggplot2::unit(3.5, "cm"),
           legend.key.height = ggplot2::unit(.5, "cm"))
 
-  map_ovc_cov
+  map_ovc_cov_u15
 
-  ggsave(filename = here(dir_graphs, "Negeria - FY23 OVC Coverage by state.png"),
-         plot = map_ovc_cov,
+  ggsave(filename = here(dir_graphs, "Negeria - FY23 OVC Coverage u15 by state.png"),
+         plot = map_ovc_cov_u15,
+         scale = 1.2, dpi = 310,
+         width = 7, height = 7,
+         units = "in")
+
+  # Under 18
+
+  map_ovc_cov_u18 <- basemap +
+    geom_sf(data = sfdf_ovc,
+            aes(fill = ovc_coverage_u18),
+            lwd = .3, color = trolley_grey_light) +
+    geom_sf(data = sfdf_cntry, fill = NA, lwd = 1, color = grey90k) +
+    geom_sf(data = sfdf_cntry, fill = NA, lwd = .3, color = grey10k) +
+    geom_sf_text(data = sfdf_ovc,
+                 aes(label = paste(psnu, "\n", percent(ovc_coverage_u18)),
+                     color = label_ovc_cov),
+                 size = 3, fontface = "bold") +
+    scale_fill_si(palette = "burnt_siennas", labels = percent,
+                  limits = c(0, 1.1),
+                  breaks = c(.1, .25, .50, .75, 1, 1.1)) +
+    scale_color_identity() +
+    labs(x = "", y = "", caption = caption) +
+    si_style_map() +
+    theme(legend.position = "top", legend.title = element_blank(),
+          legend.key.width = ggplot2::unit(3.5, "cm"),
+          legend.key.height = ggplot2::unit(.5, "cm"))
+
+  map_ovc_cov_u18
+
+  ggsave(filename = here(dir_graphs, "Negeria - FY23 OVC Coverage u18 by state.png"),
+         plot = map_ovc_cov_u18,
          scale = 1.2, dpi = 310,
          width = 7, height = 7,
          units = "in")
@@ -394,4 +481,7 @@
     rename(state = psnu, state_uid = psnuuid) %>%
     rename_with(.fn = str_to_upper) %>%
     write_csv(file = here(dir_dataout, "Negeria - FY23 OVC Programs Coverage.csv"))
+
+  df_ovcserv %>%
+    write_csv(file = here(dir_dataout, "Negeria - FY23 Cumulative OVC SERV.csv"))
 
