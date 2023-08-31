@@ -1635,3 +1635,41 @@ locator_map <- function(spdf, terr,
 
   return(map)
 }
+
+
+#' @title show geom points
+#'
+#'
+view_geom_point <- function(type = "fill") {
+
+  pts <- 0:27
+
+  mpts <- matrix(pts, ncol = 4)
+
+  .data <- map_dfr(pts, function(.x) {
+    coords <- which(mpts == .x, arr.ind=T) %>% as.list() %>% unlist()
+
+    tibble(value = .x,
+          row = coords[1],
+          col = coords[2])
+  })
+
+  .viz <- .data %>%
+    dplyr::filter(value <= 25) %>%
+    ggplot2::ggplot(aes(x = col, y = row, shape = value, label = value)) +
+    ggplot2::geom_point(size = 10) +
+    ggplot2::geom_text(aes(x = col, y = row + .3)) +
+    ggplot2::scale_shape_identity() +
+    glitr::si_style_void()
+
+  print(.viz)
+}
+
+view_geom_point()
+
+si_palettes
+
+si_palettes %>%
+  names() %>%
+  str_subset(".*_div_.*") %>%
+  walk(~show_col(si_palettes[[.x]]))
