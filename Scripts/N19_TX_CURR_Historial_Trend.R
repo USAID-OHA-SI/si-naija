@@ -102,7 +102,7 @@
     filter(indicator %in% c("TX_CURR", "TX_PVLS")) %>%
     ggplot(aes(x = fiscal_year, y = cumulative,
                group = indicator, label = comma(cumulative))) +
-    geom_rect(xmin = 2019, xmax = 2022, ymin = 500000, ymax = Inf,
+    geom_rect(xmin = 2019, xmax = 2022, ymin = 0, ymax = Inf,
               fill = trolley_grey_light, alpha = .05) +
     geom_vline(xintercept = c(2019, 2022), color = usaid_darkgrey, size = .6, linetype = "dashed") +
     geom_line(aes(color = indicator), size = 1) +
@@ -113,8 +113,8 @@
     scale_fill_manual(values = c("TX_CURR" = old_rose, "TX_PVLS" = genoa)) +
     scale_x_continuous(limits = c(2015, 2023), breaks = 2015:2023) +
     scale_y_continuous(labels = label_number(scale_cut = cut_short_scale()),
-                       limits = c(500000, 2015000),
-                       breaks = seq(500000, 2015000, 250000)) +
+                       limits = c(0, 2015000),
+                       breaks = seq(0, 2015000, 250000)) +
     coord_cartesian(clip = "off") +
     labs(x = "", y = "",
          caption = paste0("Source: FY15-FY23Q3i - Viz updated on ", curr_date(), " - Ref. ID: ", ref_id),
@@ -127,7 +127,7 @@
   si_save(filename = file.path(dir_graphics, "Nigeria - Historical Treatment Volumes.png"),
           plot = viz_trend,
           scale = 2,
-          width = 8,
+          width = 10,
           height = 6)
 
 
