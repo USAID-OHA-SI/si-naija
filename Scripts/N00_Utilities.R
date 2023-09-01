@@ -1639,8 +1639,11 @@ locator_map <- function(spdf, terr,
 
 #' @title show geom points
 #'
+#' @param type Point shape, valid options are `fill`, `color` or `all`, default is set to `all`
 #'
-view_geom_point <- function(type = "fill") {
+view_pointtypes <- function(type = c("all", "fill", "color")) {
+
+  type <- match.arg(type)
 
   pts <- 0:27
 
@@ -1654,22 +1657,81 @@ view_geom_point <- function(type = "fill") {
           col = coords[2])
   })
 
+  .data <- .data %>% dplyr::filter(value <= 25)
+
+  if (type == "fill") {
+    .data <- .data %>%
+      dplyr::filter(value %in% 21:25)
+  }
+  else if (type == "color") {
+    .data <- .data %>%
+      dplyr::filter(value < 21)
+  }
+
   .viz <- .data %>%
-    dplyr::filter(value <= 25) %>%
     ggplot2::ggplot(aes(x = col, y = row, shape = value, label = value)) +
     ggplot2::geom_point(size = 10) +
-    ggplot2::geom_text(aes(x = col, y = row + .3)) +
+    ggplot2::geom_text(aes(x = col, y = row + .4)) +
     ggplot2::scale_shape_identity() +
     glitr::si_style_void()
 
   print(.viz)
 }
 
-view_geom_point()
+# view_pointtypes()
+# view_pointtypes("fill")
+# view_pointtypes("color")
 
-si_palettes
 
-si_palettes %>%
-  names() %>%
-  str_subset(".*_div_.*") %>%
-  walk(~show_col(si_palettes[[.x]]))
+#' @title show geom lines
+#'
+#'
+view_linetypes <- function() {
+
+  .data <- tibble::tibble(
+    name = c("blank", "solid", "dashed", "dotted", "dotdash", "longdash", "twodash")
+  )
+
+  .viz <- .data %>%
+    dplyr::mutate(value = row_number()-1,
+                  label = paste0(name, " (", value, ")")) %>%
+    ggplot2::ggplot(aes(x = 0, xend = 1,
+                        y = reorder(label, desc(value)),
+                        yend = reorder(label, desc(value)),
+                        linetype = name)) +
+    ggplot2::geom_segment(size = 1) +
+    ggplot2::scale_linetype_identity() +
+    ggplot2::labs(x = "", y = "",
+                  title = "GGPLOT2 LINE TYPES",
+                  caption = "Visual help for ggplot2 geom_line() types") +
+    glitr::si_style_nolines() +
+    theme(axis.text.x = element_blank())
+
+  print(.viz)
+}
+
+#view_linetypes()
+
+
+
+#' @title show colors
+#'
+#'
+view_colors <- function(pal = "siei") {
+
+  cols <- glitr::si_palettes[[pal]]
+
+  scales::show_col(cols, ncol = round(length(cols) / 4))
+}
+
+# view_colors()
+# view_colors("genoas")
+
+# si_palettes
+#
+# si_palettes$siei
+#
+# si_palettes %>%
+#   names() %>%
+#   str_subset(".*_div_.*", negate = T) %>%
+#   walk(~show_col(si_palettes[[.x]]))
