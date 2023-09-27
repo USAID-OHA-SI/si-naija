@@ -1,8 +1,10 @@
 ##  PROJECT: SI Support for Nigeria
 ##  AUTHOR:  Baboyma Kagniniwa | USAID
 ##  PURPOSE: TX_CURR Results Trend by Gender
+##  REF. ID: 5645304d
 ##  LICENCE: MIT
 ##  DATE:    2021-03-08
+##  Updated: 2023-09-27
 
 
 # DEPENDENCIES ----
@@ -10,10 +12,11 @@
   library(tidyverse)
   library(readxl)
   library(janitor)
+  library(gophr)
   library(glitr)
   library(glamr)
   library(gisr)
-  library(gophr)
+  library(grabr)
   library(extrafont)
   library(scales)
   library(ggtext)
@@ -41,15 +44,15 @@ source("../lastmile/Scripts/00_Geo_Utilities.R")
 
   # MER Data - get the latest MSD PSNU x IM file
   file_site_im <- dir_merdata %>%
-    return_latest(pattern = "^MER_.*_Site_IM_.*_N.*.zip$")
+    return_latest(pattern = "^MER_.*_Site_IM_FY21.*_N.*.zip$")
 
   # MER Data - get the latest MSD PSNU x IM file
   file_psnu_im <- dir_merdata %>%
-    return_latest(pattern = "^MER_.*_PSNU_IM_.*_N.*.zip$")
+    return_latest(pattern = "^MER_.*_PSNU_IM_FY21.*_N.*.zip$")
 
   # NAT Data - get the latest NAT_SUBNAT file
   file_natsub <- dir_merdata %>%
-    return_latest(pattern = "^MER_.*_NAT_SUBNAT_.*.zip$")
+    return_latest(pattern = "^MER_.*_NAT_SUBNAT_FY21.*.zip$")
 
   # NAT Data - get the latest NAT_SUBNAT file
   file_apr <- dir_targets %>%
@@ -67,7 +70,13 @@ source("../lastmile/Scripts/00_Geo_Utilities.R")
   # Country name
   cntry <- "Nigeria"
   country <- "Nigeria"
-  rep_pd <- "FY21Q4"
+  agency <- "USAID"
+  rep_pd <- "FY23Q3"
+  ref_id <- "5645304d"
+
+  get_metadata(file_psnu_im)
+
+  meta <- metadata
 
 
 # FUNCTIONS ----
@@ -378,11 +387,11 @@ trend_art_saturation <- function(df) {
 # LOAD DATA ----
 
   # Data
-    df_sites <- file_site_im %>% read_msd()
+    df_sites <- file_site_im %>% read_psd()
 
-    df_psnu <- file_psnu_im %>% read_msd()
+    df_psnu <- file_psnu_im %>% read_psd()
 
-    df_nat <- file_natsub %>% read_msd()
+    df_nat <- file_natsub %>% read_psd()
 
     # FY21 APR
     df_apr <- file_apr %>%
@@ -398,7 +407,16 @@ trend_art_saturation <- function(df) {
 
     spdf_pepfar <- file_shp %>% sf::read_sf()
 
-    df_attrs <- get_attributes(country = cntry)
+    #df_attrs <- get_attributes(country = cntry)
+    df_attrs <- get_attributes(
+      country = cntry,
+      folderpath = file.path(dir_geodata, "OU-Attributes")
+    )
+
+    # df_attrs <- df_psnu %>%
+    #   filter(fiscal_year == meta$curr_fy,
+    #          str_detect(psnu, "^_Mil", negate = TRUE)) %>%
+    #   distinct(operatingunituid, operatingunit, psnuuid, psnu)
 
     spdf_pepfar <- spdf_pepfar %>%
       left_join(df_attrs, by = c("uid" = "id")) %>%
@@ -417,30 +435,14 @@ trend_art_saturation <- function(df) {
 # MUNGE ----
 
   # PLHIV
-  df_nat %>%
-    filter(indicator %in% c("PLHIV")) %>%
-    distinct(fiscal_year, standardizeddisaggregate) %>%
-    arrange(fiscal_year, standardizeddisaggregate)
-
-  df_nat %>%
-    filter(indicator %in% c("PLHIV")) %>%
-    distinct(fiscal_year, standardizeddisaggregate, statushiv) %>%
-    arrange(fiscal_year, standardizeddisaggregate)
-
-  df_nat %>%
-    filter(str_detect(indicator, "PLHIV|TX_CURR")) %>%
-    distinct(fiscal_year, indicator, standardizeddisaggregate, statushiv) %>%
-    arrange(fiscal_year, indicator, standardizeddisaggregate) %>%
-    prinf()
 
   # At State Levels
   df_plhiv <- df_nat %>%
     filter(operatingunit == cntry,
            indicator %in% c("PLHIV"),
            standardizeddisaggregate == "Total Numerator") %>%
-    group_by(fiscal_year, psnuuid, psnu, indicator) %>%
-    summarise(across(targets, sum, na.rm = TRUE), .groups = "drop") %>%
-    ungroup() %>%
+    summarise(across(targets, \(x) sum(x, na.rm = TRUE)),
+              .by = c(fiscal_year, psnuuid, psnu, indicator)) %>%
     mutate(period = paste0("FY", str_sub(fiscal_year, 3, 4))) %>%
     relocate(period, .before = 1) %>%
     rename(value = targets) %>%
@@ -452,17 +454,30 @@ trend_art_saturation <- function(df) {
     filter(operatingunit == cntry,
            indicator %in% c("PLHIV"),
            standardizeddisaggregate == "Age/Sex") %>%
-    group_by(fiscal_year, psnuuid, psnu, indicator, trendscoarse, sex) %>%
-    summarise(across(targets, sum, na.rm = TRUE), .groups = "drop") %>%
-    ungroup() %>%
+    summarise(across(targets, \(x) sum(x, na.rm = TRUE)),
+              .by = c(fiscal_year, psnuuid, psnu, indicator, trendscoarse, sex)) %>%
     mutate(period = paste0("FY", str_sub(fiscal_year, 3, 4))) %>%
     relocate(period, .before = 1) %>%
     rename(value = targets) %>%
     select(-fiscal_year) %>%
     pivot_wider(names_from = indicator, values_from = value)
 
+  # Treatment by PSNU
 
-  # Treatment
+  # df_curr_psnu <- df_psnu %>%
+  #   filter(operatingunit == cntry,
+  #          indicator %in% c("PLHIV"),
+  #          standardizeddisaggregate == "Total Numerator") %>%
+  #   summarise(across(targets, \(x) sum(x, na.rm = TRUE)),
+  #             .by = c(fiscal_year, psnuuid, psnu, indicator)) %>%
+  #   mutate(period = paste0("FY", str_sub(fiscal_year, 3, 4))) %>%
+  #   relocate(period, .before = 1) %>%
+  #   rename(value = targets) %>%
+  #   select(-fiscal_year) %>%
+  #   pivot_wider(names_from = indicator, values_from = value)
+
+
+  # Treatment sites
   df_sites %>%
     filter(indicator == 'TX_CURR') %>%
     distinct(fiscal_year, standardizeddisaggregate) %>%
@@ -474,9 +489,9 @@ trend_art_saturation <- function(df) {
     filter(indicator == "TX_CURR",
            standardizeddisaggregate == "Total Numerator",
            str_detect(psnu, "_Military", negate = TRUE),
-           fiscal_year == 2021) %>%
+           fiscal_year == meta$curr_fy) %>%
     clean_agency() %>%
-    distinct(fundingagency, psnuuid, psnu)
+    distinct(funding_agency, psnuuid, psnu)
 
   df_apr <- df_apr %>%
     left_join(df_tx_locs, by = "psnu") %>%
@@ -493,11 +508,10 @@ trend_art_saturation <- function(df) {
     clean_agency() %>%
     filter(indicator == "TX_CURR",
            standardizeddisaggregate == "Total Numerator") %>%
-    reshape_msd(clean = TRUE) %>%
+    reshape_msd() %>%
     filter(period_type == "results") %>%
-    group_by(psnuuid, psnu, period, indicator) %>%
-    summarise(across(value, sum, na.rm = TRUE), .groups = "drop") %>%
-    ungroup() %>%
+    summarise(across(value, \(x) sum(x, na.rm = TRUE)),
+              .by = c(psnuuid, psnu, period, indicator)) %>%
     mutate(fiscal_year = str_sub(period, 1, 4)) %>%
     pivot_wider(names_from = indicator, values_from = value)
 
@@ -547,14 +561,13 @@ trend_art_saturation <- function(df) {
 
 
   df_tx_curr2 <- df_sites %>%
-    reshape_msd(clean = TRUE) %>%
+    reshape_msd() %>%
     clean_agency() %>%
     filter(indicator == "TX_CURR",
            period_type == "results",
            standardizeddisaggregate == "Total Numerator") %>%
-    group_by(psnuuid, psnu, community, communityuid, period, indicator) %>%
-    summarise_at(vars(value), sum, na.rm = TRUE) %>%
-    ungroup() %>%
+    summarise(accross(value, \(x) sum(x, na.rm = TRUE)),
+              .by = c(psnuuid, psnu, community, communityuid, period, indicator)) %>%
     mutate(fiscal_year = str_sub(period, 1, 4)) %>%
     pivot_wider(names_from = indicator, values_from = value)
 
@@ -588,9 +601,7 @@ trend_art_saturation <- function(df) {
         period2 = str_remove(period2, "Q.*"),
         period2 = fct_reorder(period2, pd_order))
 
-  #df_tx_viz %>% glimpse()
-  df_tx_viz %>% view()
-  df_tx_viz %>% filter(psnu == 'Lagos') %>%  view()
+  df_tx_viz %>% filter(psnu == 'Lagos')
 
 
   # Join to spatial file
@@ -647,19 +658,19 @@ trend_art_saturation <- function(df) {
   admin1 %>% gview()
 
   spdf_art <- spdf_tx %>%
-    filter(fundingagency == "USAID",
-           period == "FY21Q4")
+    filter(funding_agency == agency,
+           period == meta$curr_pd)
 
   spdf_tx %>% dview()
 
   tx_art_trend <- df_tx_viz %>%
-    filter(fundingagency == "USAID",
-           period %in% c("FY20Q4", "FY21Q4")) %>%
+    filter(funding_agency == agency,
+           period %in% c("FY22Q4", meta$curr_pd)) %>%
     select(period, psnu, art_sat = ART_SAT) %>%
     distinct() %>%
     pivot_wider(names_from = period, values_from = art_sat) %>%
-    mutate(psnu = paste0(psnu, " (", percent(FY21Q4, 1), ")"),
-           change_color = if_else(FY21Q4 - FY20Q4 > 0, burnt_sienna, usaid_red))
+    mutate(psnu = paste0(psnu, " (", percent(FY23Q3, 1), ")"),
+           change_color = if_else(FY23Q3 - FY22Q4 > 0, burnt_sienna, usaid_red))
 
 
   max <- spdf_art %>%
@@ -700,11 +711,11 @@ trend_art_saturation <- function(df) {
             fill = NA,
             size = .3) +
     geom_sf_text(data = spdf_art,
-                   # aes(label = paste0(psnu, " (",
-                   #                    percent(ART_SAT, 1),
-                   #                    ")")),
-                   aes(label = percent(ART_SAT, 1)),
-                   size = 10,
+                   aes(label = paste0(psnu, "\n(",
+                                      percent(ART_SAT, 1),
+                                      ")")),
+                   #aes(label = percent(ART_SAT, 1)),
+                   size = 3,
                    color = grey10k) +
     labs(x = "", y = "") +
     si_style_map() +
@@ -713,26 +724,29 @@ trend_art_saturation <- function(df) {
           legend.key.height = unit(.4, "cm"),
           legend.key.width = unit(1.5, "cm"))
 
+  map_art_sat
+
 
   # DOT Change ----
   dots_art_change <- tx_art_trend %>%
-    ggplot(aes(x = reorder(psnu, FY21Q4),
-               y = FY21Q4)) +
+    ggplot(aes(x = reorder(psnu, FY23Q3),
+               y = FY22Q4)) +
     geom_hline(yintercept = .9,
-               lty = "dashed", lwd = 1,
+               lty = "dashed",
+               lwd = 1,
                color = usaid_darkgrey) +
     geom_segment(aes(xend = psnu,
-                     y = FY20Q4,
-                     yend = FY21Q4,
-                     color = FY21Q4),
+                     y = FY22Q4,
+                     yend = FY23Q3,
+                     color = FY23Q3),
                  size = 1, alpha = .7,
                  show.legend = FALSE) +
-    geom_point(aes(y = FY20Q4),
+    geom_point(aes(y = FY22Q4),
                shape = 21,
                fill = grey50k,
                size = 4 ,
                color = grey10k) +
-    geom_point(aes(y = FY21Q4, fill = FY21Q4),
+    geom_point(aes(y = FY23Q3, fill = FY23Q3),
                shape = 21, size = 5,
                color = grey10k,
                show.legend = F) +
@@ -751,12 +765,17 @@ trend_art_saturation <- function(df) {
     coord_flip() +
     labs(x = "", y = "") +
     si_style() +
-    theme(axis.text.x = element_text(size = 25),
-          axis.text.y = element_text(size = 25))
+    theme(axis.text.x = element_text(size = 15),
+          axis.text.y = element_text(size = 12))
+
+
+  dots_art_change
 
 
   # Map + bar plot ----
   art_plot <- (map_art_sat + dots_art_change)
+
+  art_plot
 
   si_save(
     filename = file.path(
@@ -769,7 +788,9 @@ trend_art_saturation <- function(df) {
              ".png")),
     plot = art_plot,
     width = 10,
-    height = 5)
+    height = 5,
+    dpi = 320,
+    scale = 1.2)
 
   # VLC ----
   # MAP ----
