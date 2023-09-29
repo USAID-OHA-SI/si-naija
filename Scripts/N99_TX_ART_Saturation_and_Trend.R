@@ -26,10 +26,6 @@
   library(patchwork)
   library(glue)
 
-
-# Load Configs
-source("../lastmile/Scripts/00_Geo_Utilities.R")
-
 # SETUP ----
 
   dir_data <- "Data"
@@ -387,6 +383,7 @@ trend_art_saturation <- function(df) {
 # LOAD DATA ----
 
   # Data
+
     df_sites <- file_site_im %>% read_psd()
 
     df_psnu <- file_psnu_im %>% read_psd()
@@ -403,6 +400,7 @@ trend_art_saturation <- function(df) {
                        "prep_new", "prep_curr")
 
   # SPATIAL DATA
+
     terr <- gisr::get_raster(path = dir_terr)
 
     spdf_pepfar <- file_shp %>% sf::read_sf()
@@ -413,11 +411,6 @@ trend_art_saturation <- function(df) {
       folderpath = file.path(dir_geodata, "OU-Attributes")
     )
 
-    # df_attrs <- df_psnu %>%
-    #   filter(fiscal_year == meta$curr_fy,
-    #          str_detect(psnu, "^_Mil", negate = TRUE)) %>%
-    #   distinct(operatingunituid, operatingunit, psnuuid, psnu)
-
     spdf_pepfar <- spdf_pepfar %>%
       left_join(df_attrs, by = c("uid" = "id")) %>%
       filter(!is.na(name))
@@ -425,11 +418,6 @@ trend_art_saturation <- function(df) {
     spdf_pepfar %>%
       st_drop_geometry() %>%
       distinct(label)
-
-    # spdf_pepfar %>%
-    #   filter(name == "Akwa Ibom",
-    #          label == 'prioritization') %>%
-    #   gview()
 
 
 # MUNGE ----
@@ -472,12 +460,15 @@ trend_art_saturation <- function(df) {
   #             .by = c(fiscal_year, psnuuid, psnu, indicator)) %>%
   #   mutate(period = paste0("FY", str_sub(fiscal_year, 3, 4))) %>%
   #   relocate(period, .before = 1) %>%
-  #   rename(value = targets) %>%
+  #   rename(value = targets) %>%-
   #   select(-fiscal_year) %>%
   #   pivot_wider(names_from = indicator, values_from = value)
 
 
   # Treatment sites
+
+  df_sites %>% glimpse()
+
   df_sites %>%
     filter(indicator == 'TX_CURR') %>%
     distinct(fiscal_year, standardizeddisaggregate) %>%
@@ -485,23 +476,27 @@ trend_art_saturation <- function(df) {
     prinf()
 
   # TX PSNU
-  df_tx_locs <- df_sites %>%
-    filter(indicator == "TX_CURR",
-           standardizeddisaggregate == "Total Numerator",
-           str_detect(psnu, "_Military", negate = TRUE),
-           fiscal_year == meta$curr_fy) %>%
-    clean_agency() %>%
-    distinct(funding_agency, psnuuid, psnu)
+  # df_tx_locs <- df_sites %>%
+  #   filter(indicator == "TX_CURR",
+  #          standardizeddisaggregate == "Total Numerator",
+  #          str_detect(psnu, "_Military", negate = TRUE),
+  #          fiscal_year == meta$curr_fy) %>%
+  #   clean_agency() %>%
+  #   distinct(funding_agency, psnuuid, psnu)
+  #
+  # df_apr <- df_apr %>%
+  #   left_join(df_tx_locs, by = "psnu") %>%
+  #   mutate(
+  #     fundingagency = case_when(
+  #       str_detect(psnu, "_Mil") ~ "DOD",
+  #       TRUE ~ fundingagency
+  #     )) %>%
+  #   mutate(period = "FY21") %>%
+  #   relocate(period, fundingagency, .before = 1)
 
-  df_apr <- df_apr %>%
-    left_join(df_tx_locs, by = "psnu") %>%
-    mutate(
-      fundingagency = case_when(
-        str_detect(psnu, "_Mil") ~ "DOD",
-        TRUE ~ fundingagency
-      )) %>%
-    mutate(period = "FY21") %>%
-    relocate(period, fundingagency, .before = 1)
+  df_sites %>%
+    filter(str_detect(indicator, "TX_")) %>%
+    distinct(indicator)
 
 
   df_tx_curr <- df_sites %>%
@@ -516,7 +511,34 @@ trend_art_saturation <- function(df) {
     pivot_wider(names_from = indicator, values_from = value)
 
   df_tx_curr %>% glimpse()
-  df_tx_curr %>% distinct(period)
+  df_tx_curr %>% arrange(period) %>% distinct(period)
+
+  # Viral Load
+
+  df_vl <- df_sites %>%
+    clean_agency() %>%
+    clean_indicator() %>%
+    filter(
+      funding_agency == agency,
+      indicator %in% c("TX_CURR", "TX_PVLS", "TX_PVLS_D"),
+      standardizeddisaggregate %in% c("Total Numerator", "Total Denominator")
+    ) %>%
+    reshape_msd() %>%
+    filter(period_type == "results") %>%
+    summarise(across(value, \(x) sum(x, na.rm = TRUE)),
+              .by = c(period, psnuuid, psnu, indicator)) %>%
+    mutate(fiscal_year = str_sub(period, 1, 4)) %>%
+    pivot_wider(names_from = indicator, values_from = value) %>%
+    arrange(psnuuid, psnu, period) %>%
+    group_by(psnuuid, psnu) %>%
+    mutate(TX_CURR_LAG2 = lag(TX_CURR, n = 2, order_by = period)) %>%
+    ungroup() %>%
+    rowwise() %>%
+    mutate(VLC = TX_PVLS_D / TX_CURR_LAG2,
+           VLS = TX_PVLS / TX_PVLS_D) %>%
+    ungroup() %>%
+    rename_with(str_to_lower)
+
 
   df_tx_curr_fy21q4 <- df_apr %>%
     select(psnuuid, psnu,
@@ -612,8 +634,9 @@ trend_art_saturation <- function(df) {
 
   spdf_vl <- spdf_pepfar %>%
     filter(label == "snu1") %>%
-    left_join(df_vl_fy21q4, by = c("uid" = "psnuuid")) %>%
-    filter(!is.na(tx_curr))
+    left_join(df_vl, by = c("uid" = "psnuuid", "name" = "psnu")) %>%
+    filter(!is.na(tx_curr),
+           period == meta$curr_pd)
 
 
 
@@ -793,8 +816,10 @@ trend_art_saturation <- function(df) {
     scale = 1.2)
 
   # VLC ----
+
   # MAP ----
-  max_vlc <- max(df_vl_fy21q4$vlc, na.rm = T)
+
+  max_vlc <- max(spdf_vl$vlc, na.rm = T)
 
   map_vlc <- basemap +
     geom_sf(data = spdf_vl,
@@ -806,8 +831,8 @@ trend_art_saturation <- function(df) {
       discrete = FALSE,
       alpha = 0.7,
       na.value = NA,
-      breaks = seq(0, max_vlc, .25),
-      limits = c(0, max_vlc),
+      breaks = seq(0, 1, .25),
+      limits = c(0, 1),
       labels = percent
     ) +
     geom_sf(data = admin0,
@@ -819,8 +844,8 @@ trend_art_saturation <- function(df) {
             fill = NA,
             size = .3) +
     geom_sf_text(data = spdf_vl,
-                 aes(label = percent(vlc, 1)),
-                 size = 10,
+                 aes(label = paste0(name, "\n", percent(vlc, 1))),
+                 size = 2,
                  color = grey10k) +
     labs(x = "", y = "") +
     si_style_map() +
@@ -829,43 +854,11 @@ trend_art_saturation <- function(df) {
           legend.key.height = unit(.4, "cm"),
           legend.key.width = unit(1.5, "cm"))
 
-  # BARS ----
-  max_vlc <- max(df_vl_fy21q4$vlc, na.rm = T)
+  map_vlc
 
-  map_vlc <- basemap +
-    geom_sf(data = spdf_vl,
-            aes(fill = vlc),
-            lwd = .3,
-            color = grey10k) +
-    scale_fill_si(
-      palette = "genoas",
-      discrete = FALSE,
-      alpha = 0.7,
-      na.value = NA,
-      breaks = seq(0, max_vlc, .25),
-      limits = c(0, max_vlc),
-      labels = percent
-    ) +
-    geom_sf(data = admin0,
-            colour = grey10k,
-            fill = NA,
-            size = 1.5) +
-    geom_sf(data = admin0,
-            colour = grey90k,
-            fill = NA,
-            size = .3) +
-    geom_sf_text(data = spdf_vl,
-                 aes(label = percent(vlc, 1)),
-                 size = 10,
-                 color = grey10k) +
-    labs(x = "", y = "") +
-    si_style_map() +
-    theme(legend.position = "bottom",
-          legend.title = element_blank(),
-          legend.key.height = unit(.4, "cm"),
-          legend.key.width = unit(1.5, "cm"))
-
-  bars_vlc <- df_vl_fy21q4 %>%
+  bars_vlc <- df_vl %>%
+    filter(str_detect(psnu, "_Mil", negate = T),
+           period == meta$curr_pd) %>%
     mutate(color = case_when(
       vlc < .85 ~ usaid_black,
       TRUE ~ "white"
@@ -878,7 +871,7 @@ trend_art_saturation <- function(df) {
                lty = "dashed", lwd = .5,
                color = usaid_darkgrey) +
     geom_text(aes(label = percent(vlc, 1), color = color),
-              size = 8, hjust = 1.1) +
+              size = 3, hjust = 1.1) +
     scale_fill_si(
       palette = "genoas",
       discrete = FALSE,
@@ -890,10 +883,14 @@ trend_art_saturation <- function(df) {
     coord_flip() +
     labs(x = "", y = "") +
     si_style_xgrid() +
-    theme(axis.text.x = element_text(size = 25),
-          axis.text.y = element_text(size = 25))
+    theme(axis.text.x = element_text(size = 10),
+          axis.text.y = element_text(size = 10))
+
+  bars_vlc
 
   vlc_plot <- (map_vlc + bars_vlc)
+
+  vlc_plot
 
   si_save(
     filename = file.path(
@@ -906,12 +903,14 @@ trend_art_saturation <- function(df) {
              ".png")),
     plot = vlc_plot,
     width = 10,
-    height = 5)
+    height = 5,
+    dpi = 320,
+    scale = 1.2)
 
   # VLS ----
 
   # MAP ---
-  max_vls <- max(df_vl_fy21q4$vls, na.rm = T)
+  max_vls <- max(spdf_vl$vls, na.rm = T)
   max_vls <- ifelse(max_vls < 1, 1, max_vls)
 
   map_vls <- basemap +
@@ -937,8 +936,8 @@ trend_art_saturation <- function(df) {
             fill = NA,
             size = .3) +
     geom_sf_text(data = spdf_vl,
-                 aes(label = percent(vls, 1)),
-                 size = 10,
+                 aes(label = paste0(name, "\n", percent(vls, 1))),
+                 size = 2,
                  color = grey10k) +
     labs(x = "", y = "") +
     si_style_map() +
@@ -947,21 +946,31 @@ trend_art_saturation <- function(df) {
           legend.key.height = unit(.4, "cm"),
           legend.key.width = unit(1.5, "cm"))
 
+  map_vls
+
   # BARS ----
-  bars_vls <- df_vl_fy21q4 %>%
-    mutate(color = case_when(
-      vls < .85 ~ usaid_black,
-      TRUE ~ "white"
-    )) %>%
+  bars_vls <- df_vl %>%
+    filter(str_detect(psnu, "_Mil", negate = T),
+           period == meta$curr_pd) %>%
+    mutate(
+      color = case_when(
+        vls < .85 ~ usaid_black,
+        TRUE ~ "white"
+      ),
+      vls_label = case_when(
+        percent(vls, 1) == "100%" ~ percent(vls, .1),
+        TRUE ~ percent(vls, 1)
+      )
+    ) %>%
     ggplot(aes(x = reorder(psnu, vls),
                y = vls,
                fill = vls)) +
     geom_col(show.legend = F) +
-    # geom_hline(yintercept = .9,
+    # geom_hline(yintercept = .95,
     #            lty = "dashed", lwd = .5,
     #            color = grey10k) +
-    geom_text(aes(label = percent(vls, 1), color = color),
-              size = 8, hjust = 1.1) +
+    geom_text(aes(label = vls_label, color = color),
+              size = 3, hjust = 1.1) +
     scale_fill_si(
       palette = "genoas",
       discrete = FALSE,
@@ -974,11 +983,15 @@ trend_art_saturation <- function(df) {
     coord_flip() +
     labs(x = "", y = "") +
     si_style_xgrid() +
-    theme(axis.text.x = element_text(size = 25),
-          axis.text.y = element_text(size = 25))
+    theme(axis.text.x = element_text(size = 10),
+          axis.text.y = element_text(size = 10))
+
+  bars_vls
 
   # Map & Bars ----
   vls_plot <- (map_vls + bars_vls)
+
+  vls_plot
 
   si_save(
     filename = file.path(
@@ -991,7 +1004,9 @@ trend_art_saturation <- function(df) {
              ".png")),
     plot = vls_plot,
     width = 10,
-    height = 5)
+    height = 5,
+    dpi = 320,
+    scale = 1.2)
 
 
 
