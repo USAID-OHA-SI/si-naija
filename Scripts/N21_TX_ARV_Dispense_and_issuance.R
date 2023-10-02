@@ -18,6 +18,7 @@
   library(scales)
   library(sf)
   library(lubridate)
+  library(janitor)
   library(extrafont)
   library(tidytext)
   library(patchwork)
@@ -111,6 +112,17 @@
   df_ll_report %>% distinct(last_drug_pickup_date)
 
   df_ll_report <- df_ll_report %>%
+    arrange(ip, state, lga, facility, date_of_birth) %>%
+    group_by(ip, state, lga, facility) %>%
+    mutate(patient_uid = row_number()) %>%
+    ungroup() %>%
+    mutate(patient_uid = paste0(
+      datim_code, "-",
+      str_pad(as.character(patient_uid),
+              width= max(nchar(.$patient_uid)),
+              pad = "0",
+              side = "left"))) %>%
+    relocate(patient_uid, .after = datim_code) %>%
     mutate(date_of_birth = ymd(date_of_birth),
            art_start_date = dmy(art_start_date),
            last_clinic_visit_date = dmy(last_clinic_visit_date),
@@ -119,8 +131,39 @@
            months_since_art_start_date = interval(art_start_date, last_drug_pickup_date) %/% months(1),
            years_since_art_start_date = interval(art_start_date, last_drug_pickup_date) %/% years(1),
            last_drug_pickup_month = month(last_drug_pickup_date),
-           last_drug_pickup_quarter = quarter(last_drug_pickup_date, fiscal_start = 10),
-           last_drug_pickup_year = year(last_drug_pickup_date))
+           last_drug_pickup_year = year(last_drug_pickup_date),
+           last_drug_pickup_quarter = paste0(
+             "FY", str_sub(last_drug_pickup_year, 3, 4), "Q",
+             quarter(last_drug_pickup_date, fiscal_start = 10)
+           ))
+
+  df_ll_report %>% glimpse()
+
+  ## Extract Facilities Info
+
+  df_locs <- df_ll_report %>%
+    select(facility_uid = datim_code, lga, state, ip) %>%
+    distinct_all()
+
+  ## Extract Patients Demo/Personal Info - assuming each record represent unique patient
+
+  df_patients <- df_ll_report %>%
+    select(patient_uid, facility_uid = datim_code, sex, date_of_birth,
+           art_start_date, age_at_art_initiation, current_age) %>%
+    distinct_all()
+
+  ## Restrict data to ARV Dispensing only
+  df_arv <- df_ll_report %>%
+    select(patient_uid, facility_uid = datim_code,
+           last_clinic_visit_date,
+           pregnancy_status,
+           last_drug_pickup_date,
+           last_drug_pickup_month,
+           last_drug_pickup_quarter,
+           last_drug_pickup_year,
+           last_regimen,
+           days_of_arv_refill)
+
 
   ## LMIS
 
