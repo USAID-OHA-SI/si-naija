@@ -23,6 +23,7 @@
   library(tidytext)
   library(patchwork)
   library(ggtext)
+  library(googlesheets4)
 
 
 # LOCALS & SETUP ====
@@ -62,6 +63,8 @@
   dir_sch <- file.path(dir_cntry, "SCH")
   dir_ll <- file.path(dir_cntry, "NDR/LineLists")
 
+  file_regs <- "1Lytpw6apvq0-nGsa1K9M4wM8867-9oKI5tV4fr4uvwo"
+
 # Functions  =====
 
 # LOAD DATA =====
@@ -78,6 +81,25 @@
     return_latest(pattern = "Patient_Line_List - Active - ACE3 - Kebbi.csv") %>%
     read_csv()
 
+  dir_ll %>%
+    return_latest(pattern = "Patient_Line_List - Active - All.csv") %>%
+    open_path()
+
+
+  # Write data to g-sheet
+  dir_ll %>%
+    return_latest(pattern = "Patient_Line_List - Active - All.csv") %>%
+    read_csv() %>%
+    clean_names() %>%
+    distinct(last_regimen) %>%
+    filter(str_detect(last_regimen, "^\\d|Adult|Child", negate = T)) %>%
+    arrange(last_regimen) %>%
+    sheet_write(
+      data = .,
+      ss = as_sheets_id(file_regs),
+      sheet = "NDR - Regimens"
+    )
+
   # SCH - LMIS
 
   dir_sch %>% list.files()
@@ -86,6 +108,16 @@
     return_latest(pattern = "export-lmis.*.xlsx$") %>%
     #excel_sheets()
     read_excel(sheet = "HIV")
+
+  df_sch_lmis %>%
+    clean_names() %>%
+    distinct(product_code, product) %>%
+    arrange(product) %>%
+    sheet_write(
+      data = .,
+      ss = as_sheets_id(file_regs),
+      sheet = "NHLMIS - Regimens"
+    )
 
 # MUNGE =====
 
@@ -98,18 +130,16 @@
 
   ## LL
 
-  df_ll %>% glimpse()
-
   df_ll_report <- df_ll %>%
     select(-starts_with("...")) %>%
     clean_names()
 
-  df_ll_report %>% glimpse()
-
-  df_ll_report %>% distinct(date_of_birth)
-  df_ll_report %>% distinct(art_start_date)
-  df_ll_report %>% distinct(last_clinic_visit_date)
-  df_ll_report %>% distinct(last_drug_pickup_date)
+  # df_ll_report %>% glimpse()
+  #
+  # df_ll_report %>% distinct(date_of_birth)
+  # df_ll_report %>% distinct(art_start_date)
+  # df_ll_report %>% distinct(last_clinic_visit_date)
+  # df_ll_report %>% distinct(last_drug_pickup_date)
 
   df_ll_report <- df_ll_report %>%
     arrange(ip, state, lga, facility, date_of_birth) %>%
@@ -127,8 +157,6 @@
            art_start_date = dmy(art_start_date),
            last_clinic_visit_date = dmy(last_clinic_visit_date),
            last_drug_pickup_date = dmy(last_drug_pickup_date))
-
-  df_ll_report %>% glimpse()
 
   ## Extract Facilities Info
 
