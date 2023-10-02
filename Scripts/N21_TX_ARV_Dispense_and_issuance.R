@@ -126,16 +126,7 @@
     mutate(date_of_birth = ymd(date_of_birth),
            art_start_date = dmy(art_start_date),
            last_clinic_visit_date = dmy(last_clinic_visit_date),
-           last_drug_pickup_date = dmy(last_drug_pickup_date),
-           days_before_drug_pickup = last_drug_pickup_date - last_drug_pickup_date,
-           months_since_art_start_date = interval(art_start_date, last_drug_pickup_date) %/% months(1),
-           years_since_art_start_date = interval(art_start_date, last_drug_pickup_date) %/% years(1),
-           last_drug_pickup_month = month(last_drug_pickup_date),
-           last_drug_pickup_year = year(last_drug_pickup_date),
-           last_drug_pickup_quarter = paste0(
-             "FY", str_sub(last_drug_pickup_year, 3, 4), "Q",
-             quarter(last_drug_pickup_date, fiscal_start = 10)
-           ))
+           last_drug_pickup_date = dmy(last_drug_pickup_date))
 
   df_ll_report %>% glimpse()
 
@@ -148,9 +139,11 @@
   ## Extract Patients Demo/Personal Info - assuming each record represent unique patient
 
   df_patients <- df_ll_report %>%
-    select(patient_uid, facility_uid = datim_code, sex, date_of_birth,
-           art_start_date, age_at_art_initiation, current_age) %>%
+    select(patient_uid, facility_uid = datim_code, sex,
+           date_of_birth, current_age,
+           art_start_date, age_at_art_initiation) %>%
     distinct_all()
+
 
   ## Restrict data to ARV Dispensing only
   df_arv <- df_ll_report %>%
@@ -158,18 +151,32 @@
            last_clinic_visit_date,
            pregnancy_status,
            last_drug_pickup_date,
-           last_drug_pickup_month,
-           last_drug_pickup_quarter,
-           last_drug_pickup_year,
            last_regimen,
-           days_of_arv_refill)
+           days_of_arv_refill) %>%
+    mutate(
+      last_drug_pickup_year = year(last_drug_pickup_date),
+      last_drug_pickup_month = month(last_drug_pickup_date),
+      last_drug_pickup_month_lbl = month(last_drug_pickup_date, label = TRUE),
+      last_drug_pickup_quarter = quarter(last_drug_pickup_date, fiscal_start = 10, with_year = TRUE),
+      last_drug_pickup_quarter = paste0(
+        "FY", str_sub(last_drug_pickup_quarter, 3, 4), "Q", str_sub(last_drug_pickup_quarter, -1)
+      )
+    )
+
+  df_arv_viz <- df_arv %>%
+    summarise(
+      patients = n(),
+      days_of_arv_refill = sum(days_of_arv_refill, na.rm  = T),
+      .by = c(last_regimen, last_drug_pickup_year,
+              last_drug_pickup_month, last_drug_pickup_month_lbl)
+    )
 
 
   ## LMIS
 
   df_sch_lmis %>% glimpse()
 
-  df_sch_lmis %>%
+  df_sch_lmis <- df_sch_lmis %>%
     clean_names() %>%
     distinct(start_month, end_month)
 
