@@ -224,6 +224,14 @@ open_path <- function(path) {
   utils::browseURL(path)
 }
 
+#' @title Generate UID
+#'
+generate_uuid <- function() {
+  Sys.time() |>
+    digest::sha1() |>
+    substr(start = 1, stop = 8)
+}
+
 #' @title Link list items together as a string
 #'
 connect_list <- function(items, connector = "-") {
