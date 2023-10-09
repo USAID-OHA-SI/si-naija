@@ -1303,6 +1303,12 @@ clean_mechs <- function(.data) {
         mech_name == "ACE Cluster 4" ~ "ACE 4",
         mech_name == "ACE Cluster 5" ~ "ACE 5",
         mech_name == "ACE Cluster 6" ~ "ACE 6",
+        str_detect(mech_name, "ACE 1") ~ "ACE 1",
+        str_detect(mech_name, "ACE 2") ~ "ACE 2",
+        str_detect(mech_name, "ACE 3") ~ "ACE 3",
+        str_detect(mech_name, "ACE 4") ~ "ACE 4",
+        str_detect(mech_name, "ACE 5") ~ "ACE 5",
+        str_detect(mech_name, "ACE 6|Nigeria - 6") ~ "ACE 6",
         # CDC
         mech_name == "Partnering Effectively to end AIDS through Results and Learning (PEARL)_2097" ~ "PEARL",
         mech_name == "Global Action towards HIV Epidemic Control in Subnational units in Nigeria (4GATES PROJECT)_2100" ~ "4GATES",

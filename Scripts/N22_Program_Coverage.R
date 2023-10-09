@@ -122,7 +122,7 @@
   spdf_psnu <- spdf_pepfar %>%
     filter(orgunit_label == "prioritization")
 
-  # OVC
+  # OVC ----
 
   df_ovc <- df_msd_psnu %>%
     filter(fiscal_year == meta$curr_fy,
@@ -149,7 +149,7 @@
     left_join(df_ovc_cov, by = c("uid" = "psnuuid")) %>%
     filter(!is.na(mech_name))
 
-  # KP
+  # KP ----
 
   trans_states <- c("Kano", "Edo", "Taraba")
   gf_states <- c("Gombe", "Kwara", "Anambra", "Ebonyi")
@@ -178,6 +178,27 @@
     left_join(df_kp_cov, by = c("orgunit_name" = "psnu")) %>%
     filter(!is.na(mech_name))
 
+  # TX ----
+
+  df_tx <- df_msd_psnu %>%
+    filter(fiscal_year == meta$curr_fy,
+           operatingunit == cntry,
+           funding_agency == agency,
+           str_detect(indicator, "TX_"),
+           str_detect(standardizeddisaggregate, "KeyPop", negate = T),
+           str_detect(mech_name, "KP CARE", negate = T))
+
+  df_tx %>% distinct(mech_name)
+
+  df_tx_cov <- df_tx %>%
+    distinct(fiscal_year, funding_agency, country, psnuuid, psnu, mech_name) %>%
+    clean_mechs() %>%
+    filter(str_detect(psnu, "_Mil", negate = T)) %>%
+    filter(!(mech_name == "RISE" & psnu != "Taraba"))
+
+  spdf_tx_cov <- spdf_psnu %>%
+    left_join(df_tx_cov, by = c("uid" = "psnuuid")) %>%
+    filter(!is.na(mech_name))
 
 # VIZ =====
 
@@ -283,5 +304,52 @@
     dpi = 320,
     scale = 1.2)
 
-# OUTPUTS =====
+  # TX Partners
+
+  tx_map <- bmap +
+    geom_sf(data = spdf_tx_cov,
+            aes(fill = mech_name),
+            size = .3,
+            color = grey30k) +
+    geom_sf(data = spdf_cntry,
+            colour = grey10k,
+            fill = NA,
+            size = 1.5) +
+    geom_sf(data = spdf_cntry,
+            colour = grey90k,
+            fill = NA,
+            size = .3) +
+    geom_sf_text(data = spdf_psnu,
+                 aes(label = orgunit_name),
+                 size = 2,
+                 color = grey90k) +
+    scale_fill_manual(
+      values = c(
+        "ACE 1" = scooter,
+        "ACE 2" = denim,
+        "ACE 3" = moody_blue,
+        "ACE 4" = burnt_sienna,
+        "ACE 5" = golden_sand,
+        "ACE 6" = genoa,
+        "RISE" = old_rose
+      )) +
+    labs(x = "", y = "") +
+    si_style_map() +
+    theme(legend.title = element_blank())
+
+  tx_map
+
+  si_save(
+    filename = file.path(
+      dir_graphics,
+      paste0(meta$curr_pd, " - ",
+             str_to_upper(cntry),
+             " - TX PROGRAM COVERAGE",
+             ".png")),
+    plot = tx_map,
+    width = 10,
+    height = 7,
+    dpi = 320,
+    scale = 1.2)
+
 
