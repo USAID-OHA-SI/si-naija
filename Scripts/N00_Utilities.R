@@ -1322,36 +1322,36 @@ clean_partners <- function(.data) {
 
   .data %>%
     mutate(
-      primepartner = case_when(
+      prime_partner_name = case_when(
         # USAID
-        primepartner == "Family Health International" ~ "FHI 360",
-        primepartner == "Chemonics International, Inc." ~ "Chemonics",
-        primepartner == "JHPIEGO CORPORATION" ~ "JHPIEGO",
-        primepartner == "SOCIETY FOR FAMILY HEALTH" ~ "SFH",
-        primepartner == "HEARTLAND ALLIANCE" ~ "HEARTLAND",
-        primepartner == "HEARTLAND ALLIANCE LTD-GTE" ~ "HEARTLAND",
-        primepartner == "Heartland Alliance International, LLC" ~ "HEARTLAND",
-        primepartner == "CENTER FOR CLINICAL CARE AND CLINICAL RESEARCH LTD GTE" ~ "C4C3R",
-        primepartner == "ASSOCIATION FOR REPRODUCTIVE  AND FAMILY HEALTH" ~ "ARFH",
-        primepartner == "PRO-HEALTH INTERNATIONAL" ~ "ProHI",
-        primepartner == "Management Sciences For Health, Inc." ~ "MHS",
-        primepartner == "APIN PUBLIC HEALTH INITIATIVE S LTD/GTE" ~ "APIN",
-        primepartner == "CATHOLIC CARITAS FOUNDATION O F NIGERIA" ~ "CARITAS",
+        prime_partner_name == "Family Health International" ~ "FHI 360",
+        prime_partner_name == "Chemonics International, Inc." ~ "Chemonics",
+        prime_partner_name == "JHPIEGO CORPORATION" ~ "JHPIEGO",
+        prime_partner_name == "SOCIETY FOR FAMILY HEALTH" ~ "SFH",
+        prime_partner_name == "HEARTLAND ALLIANCE" ~ "HEARTLAND",
+        prime_partner_name == "HEARTLAND ALLIANCE LTD-GTE" ~ "HALG",
+        prime_partner_name == "Heartland Alliance International, LLC" ~ "HAITL",
+        prime_partner_name == "CENTER FOR CLINICAL CARE AND CLINICAL RESEARCH LTD GTE" ~ "C4C3R",
+        prime_partner_name == "ASSOCIATION FOR REPRODUCTIVE  AND FAMILY HEALTH" ~ "ARFH",
+        prime_partner_name == "PRO-HEALTH INTERNATIONAL" ~ "PHI",
+        prime_partner_name == "Management Sciences For Health, Inc." ~ "MHS",
+        prime_partner_name == "APIN PUBLIC HEALTH INITIATIVE S LTD/GTE" ~ "APIN",
+        prime_partner_name == "CATHOLIC CARITAS FOUNDATION OF NIGERIA" ~ "CARITAS",
         # FY22 - New Partners
-        primepartner == 'Achieving Health Nigeria Initiative (AHINi)' ~ 'AHINi',
-        primepartner == 'Georgetown Global Health Nigeria (GGHN)' ~ 'GGHN',
-        primepartner == 'Health Systems Consult Limited (HSCL)' ~ 'HSCL',
-        primepartner == 'Center for Clinical Care and Clinical Research (CCCRN)' ~ 'CCCRN',
-        primepartner == 'Heartland Alliance Ltd GTE (HALG)' ~ 'HALG',
-        primepartner == 'AKS & CRS' ~ 'AKS & CRS',
+        prime_partner_name == 'Achieving Health Nigeria Initiative (AHINi)' ~ 'AHINi',
+        prime_partner_name == 'Georgetown Global Health Nigeria (GGHN)' ~ 'GGHN',
+        prime_partner_name == 'Health Systems Consult Limited (HSCL)' ~ 'HSCL',
+        prime_partner_name == 'Center for Clinical Care and Clinical Research (CCCRN)' ~ 'CCCRN',
+        prime_partner_name == 'Heartland Alliance Ltd GTE (HALG)' ~ 'HALG',
+        prime_partner_name == 'AKS & CRS' ~ 'AKS & CRS',
         # CDC
-        primepartner == "APIN PUBLIC HEALTH INITIATIVES LTD/GTE" ~ "APHI",
-        primepartner == "INSTITUTE OF HUMAN VIROLOGY" ~ "IHVN",
-        primepartner == "CATHOLIC CARITAS FOUNDATION OF NIGERIA" ~ "CCFN",
-        primepartner == "CENTRE FOR INTEGRATED HEALTH PROGRAMS" ~ "CIHP",
+        prime_partner_name == "APIN PUBLIC HEALTH INITIATIVES LTD/GTE" ~ "APHI",
+        prime_partner_name == "INSTITUTE OF HUMAN VIROLOGY" ~ "IHVN",
+        prime_partner_name == "CATHOLIC CARITAS FOUNDATION OF NIGERIA" ~ "CCFN",
+        prime_partner_name == "CENTRE FOR INTEGRATED HEALTH PROGRAMS" ~ "CIHP",
         # DOD
-        primepartner == "Henry M. Jackson Foundation For The Advancement Of Military Medicine, Inc., The" ~ "HJF",
-        TRUE ~ primepartner
+        prime_partner_name == "Henry M. Jackson Foundation For The Advancement Of Military Medicine, Inc., The" ~ "HJF",
+        TRUE ~ prime_partner_name
       )
     )
 }
