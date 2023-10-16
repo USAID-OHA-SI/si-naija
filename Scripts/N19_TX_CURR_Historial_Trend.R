@@ -63,6 +63,15 @@
 
 # LOAD DATA =====
 
+  df_plhiv <- file_nat1 %>%
+    c(file_nat2) %>%
+    map_dfr(function(.x) {
+      read_psd(.x) %>%
+        filter(operatingunit == cntry,
+               indicator == "PLHIV",
+               standardizeddisaggregate == "Total Numerator")
+    })
+
   df_tx <- file_ou1 %>%
     c(file_ou2) %>%
     map_dfr(function(.x) {
@@ -81,11 +90,39 @@
 
 # MUNGE =====
 
+  df_hiv <- df_plhiv %>%
+    summarise(across(targets, \(x) sum(x, na.rm = T)),
+              .by = c(fiscal_year, psnu, indicator)) %>%
+    rename(plhiv = targets) %>%
+    select(-indicator)
+
   df_tx %>% glimpse()
 
   df_tx %>% distinct(indicator) %>% pull()
   df_tx %>% distinct(funding_agency)
   df_tx %>% distinct(standardizeddisaggregate)
+
+  df_tx_curr <- df_tx_psnu %>%
+    filter(indicator == "TX_CURR",
+           standardizeddisaggregate == "Total Numerator") %>%
+    summarise(across(cumulative, \(x) sum(x, na.rm = T)),
+              .by = c(fiscal_year, psnu, indicator)) %>%
+    rename(tx_curr = cumulative) %>%
+    select(-indicator) %>%
+    left_join(df_hiv, by = c("fiscal_year", "psnu")) %>%
+    mutate(art_sat = tx_curr / plhiv)
+
+  df_tx_curr %>%
+    filter(!is.na(tx_curr), !is.na(plhiv)) %>%
+    summarise(across(c(tx_curr, plhiv), \(x) sum(x, na.rm = T)),
+              .by = fiscal_year) %>%
+    mutate(psnu = "USAID",
+           art_sat = tx_curr / plhiv) %>%
+    bind_rows(df_tx_curr, .) %>%
+    arrange(fiscal_year, psnu) %>%
+    write_csv(file = file.path(dir_dataout, "Nigeria - historical art saturation.csv"),
+              na = "")
+
 
   df_tx_hist_ou_all <- df_tx %>%
     clean_indicator() %>%

@@ -1,6 +1,30 @@
 
-
 options(digits = 7)
+
+
+# USAID Targets
+df_usaid <- file_ou1 %>%
+  c(file_ou2) %>%
+  map_dfr(function(.x) {
+    read_psd(.x) %>%
+      filter(str_detect(indicator, "TX_CURR|PrEP|PREV|OVC_SERV"),
+             str_detect(standardizeddisaggregate, "Total N|Age/Sex|KeyPop"),
+             fiscal_year == meta$curr_fy + 1)
+  })
+
+df_usaid %>%
+  distinct(indicator, standardizeddisaggregate) %>%
+  prinf()
+
+
+df_usaid %>%
+  filter(indicator %in% c("TX_CURR", "OVC_SERV_UNDER_18", "PrEP_CT", "PrEP_NEW", "KP_PREV"),
+         standardizeddisaggregate %in% C("Total Numerator")) %>%
+  summarise(targets = sum(targets, na.rm =T),
+            .by = c(fiscal_year, funding_agency, indicator)) %>%
+  arrange(indicator, desc(targets)) %>%
+  prinf()
+
 
 ## OVC SERV
 df_ovc <- si_path() %>%
