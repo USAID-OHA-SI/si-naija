@@ -65,6 +65,8 @@
 
   meta <- metadata
 
+  meta$source <- meta$source %>% paste("- Ref. ID =", ref_id)
+
 
 # FUNCTIONS ----
 
@@ -136,7 +138,6 @@
     mutate(period = paste0("FY", str_sub(fiscal_year, 3, 4))) %>%
     relocate(period, .before = 1) %>%
     rename(value = targets) %>%
-    select(-fiscal_year) %>%
     pivot_wider(names_from = indicator, values_from = value) %>%
     rename_with(str_to_lower)
 
@@ -236,6 +237,15 @@
     left_join(df_vl, by = c("uid" = "psnuuid", "orgunit_name" = "psnu")) %>%
     filter(!is.na(tx_curr), period == meta$curr_pd)
 
+  spdf_hiv <- spdf_pepfar %>%
+    filter(orgunit_label == "prioritization") %>%
+    left_join(df_plhiv, by = c("uid" = "psnuuid", "orgunit_name" = "psnu")) %>%
+    filter(!is.na(plhiv), fiscal_year == meta$curr_fy) %>%
+    mutate(label_color = case_when(
+      plhiv >= 100000 ~ "white",
+      TRUE ~ grey80k
+    ))
+
 
 
 # VIZ ----
@@ -247,15 +257,74 @@
 
   # Extract admin 0 and 1 for basemap
   admin0 <- spdf_pepfar %>%
-    filter(regionorcountry_name == "Cameroon",
+    filter(regionorcountry_name == cntry,
            orgunit_label == "country")
 
-  admin0 %>% gview
-
   admin1 <- spdf_pepfar %>%
-    filter(regionorcountry_name == .cntry,
+    filter(regionorcountry_name == cntry,
            orgunit_label == "prioritization")
 
+  admin0 %>% gview()
+
+  hiv_range <- spdf_hiv %>%
+    st_drop_geometry() %>%
+    pull(plhiv) %>% #sum()
+    range()
+
+  # Produce basemap
+  bmap <- terrain_map(countries = admin0,
+                         adm0 = admin0,
+                         adm1 = admin1,
+                         mask = TRUE,
+                         terr = terr)
+
+  map_hiv <- bmap +
+    geom_sf(data = spdf_hiv,
+            aes(fill = plhiv),
+            lwd = .3,
+            color = "white") +
+    scale_fill_si(
+      palette = "burnt_siennas",
+      discrete = FALSE,
+      alpha = 0.7,
+      na.value = NA,
+      breaks = seq(0, 200000, 25000),
+      limits = c(0, 200000 + 1000),
+      labels = label_number(scale_cut = cut_short_scale())
+    ) +
+    geom_sf(data = admin0,
+            colour = grey10k,
+            fill = NA,
+            size = 1.5) +
+    geom_sf(data = admin0,
+            colour = grey90k,
+            fill = NA,
+            size = .3) +
+    geom_sf_text(data = spdf_hiv,
+                 aes(label = paste0(orgunit_name, "\n(",
+                                    comma(plhiv),
+                                    ")"),
+                     color = label_color),
+                 size = 3) +
+    scale_color_identity() +
+    labs(x = "", y = "",
+         caption = glue("{meta$source} - Updated on {curr_date()}")) +
+    si_style_map() +
+    theme(legend.position = "bottom",
+          legend.title = element_blank(),
+          legend.key.height = unit(.4, "cm"),
+          legend.key.width = unit(2, "cm"))
+
+  print(map_hiv)
+
+  si_save(filename = file.path(dir_graphics, "Nigeria - 2023 Distribution of People Living with HIV.png"),
+          plot = map_hiv,
+          dpi = 320,
+          scale = 1.5,
+          width = 10,
+          height = 7)
+
+  # Batch Production
   push_cntries %>%
     nth(7) %>%
     walk(function(.cntry) {
