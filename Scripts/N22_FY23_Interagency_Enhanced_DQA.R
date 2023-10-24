@@ -4,8 +4,8 @@
 # REF ID:  3c1bb538
 # LICENSE: MIT
 # DATE:    2023-10-15
-# UPDATE:  2023-10-15
-# NOTES:   HQ FO Inqueries into Nigeria/Inter-agency Enhanced DQA
+# UPDATE:  2023-10-23
+# NOTES:   HQ FO Inquiries into USAID/Nigeria Enhanced DQA
 
 # Libraries ====
 
@@ -74,7 +74,8 @@
 
   df_nat <- file_nat1 %>%
     c(file_nat2) %>%
-    map_dfr(read_psd)
+    map_dfr(read_psd) %>%
+    filter(operatingunit == cntry)
 
   df_sites <- file_sites1 %>%
     c(file_sites2) %>%
@@ -135,6 +136,10 @@
     relocate(funding_agency, psnuuid, psnu, orgunituid, .before = 1) %>%
     arrange(funding_agency, psnu, site, satellite)
 
+  df_ss_locs <- df_ss %>%
+    select(-satellite) %>%
+    distinct_all()
+
   # TX
 
   df_tx <- df_sites %>%
@@ -178,6 +183,14 @@
     arrange(desc(cumulative)) %>%
     filter(row_number() <= 10)
 
+  df_tx_site_hvol <- df_tx_site %>%
+    filter(indicator %in% c("TX_CURR"),
+           fiscal_year == meta$curr_fy) %>%
+    arrange(desc(cumulative)) %>%
+    filter(cumulative >= 1000)
+
+  df_tx_site_hvol %>% count(psnu)
+
   # TX Top10 USAID Sites
 
   df_tx_usaid_site_t10 <- df_tx %>%
@@ -193,7 +206,7 @@
 
   # TX Top 10 Historical Trend
 
-  df_top10 %>%
+  df_tx_usaid_site_t10 %>%
     pull(orgunituid) %>%
     filter(.data = df_tx,
            fiscal_year == meta$curr_fy,
