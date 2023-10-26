@@ -224,6 +224,14 @@ open_path <- function(path) {
   utils::browseURL(path)
 }
 
+#' @title Generate UID
+#'
+generate_uuid <- function() {
+  Sys.time() |>
+    digest::sha1() |>
+    substr(start = 1, stop = 8)
+}
+
 #' @title Link list items together as a string
 #'
 connect_list <- function(items, connector = "-") {
@@ -713,6 +721,25 @@ group_agesex <- function(.data) {
         TRUE ~ NA_character_
       )) %>%
     relocate(category, .before = age)
+}
+
+
+#' @title Categorize age groups
+#'
+#'
+group_ages <- function(.df_msd) {
+
+  .df_msd %>%
+    mutate(
+      age_group = case_when(
+        ageasentered %in% c("<01", "01-04", "05-09", "10-14") ~ "<15",
+        ageasentered %in% c("15-19") ~ "15-19",
+        ageasentered %in% c("20-24") ~ "20-24",
+        ageasentered %in% c("25-29", "30-34", "35-39", "40-44", "45-49",
+                            "50+", "50-54", "55-59", "60-64", "65+") ~ "25+",
+        TRUE ~ ageasentered
+      )) %>%
+    relocate(age_group, .after = ageasentered)
 }
 
 #' @title Ellipsis
@@ -1295,6 +1322,12 @@ clean_mechs <- function(.data) {
         mech_name == "ACE Cluster 4" ~ "ACE 4",
         mech_name == "ACE Cluster 5" ~ "ACE 5",
         mech_name == "ACE Cluster 6" ~ "ACE 6",
+        str_detect(mech_name, "ACE 1") ~ "ACE 1",
+        str_detect(mech_name, "ACE 2") ~ "ACE 2",
+        str_detect(mech_name, "ACE 3") ~ "ACE 3",
+        str_detect(mech_name, "ACE 4") ~ "ACE 4",
+        str_detect(mech_name, "ACE 5") ~ "ACE 5",
+        str_detect(mech_name, "ACE 6|Nigeria - 6") ~ "ACE 6",
         # CDC
         mech_name == "Partnering Effectively to end AIDS through Results and Learning (PEARL)_2097" ~ "PEARL",
         mech_name == "Global Action towards HIV Epidemic Control in Subnational units in Nigeria (4GATES PROJECT)_2100" ~ "4GATES",
@@ -1314,36 +1347,36 @@ clean_partners <- function(.data) {
 
   .data %>%
     mutate(
-      primepartner = case_when(
+      prime_partner_name = case_when(
         # USAID
-        primepartner == "Family Health International" ~ "FHI 360",
-        primepartner == "Chemonics International, Inc." ~ "Chemonics",
-        primepartner == "JHPIEGO CORPORATION" ~ "JHPIEGO",
-        primepartner == "SOCIETY FOR FAMILY HEALTH" ~ "SFH",
-        primepartner == "HEARTLAND ALLIANCE" ~ "HEARTLAND",
-        primepartner == "HEARTLAND ALLIANCE LTD-GTE" ~ "HEARTLAND",
-        primepartner == "Heartland Alliance International, LLC" ~ "HEARTLAND",
-        primepartner == "CENTER FOR CLINICAL CARE AND CLINICAL RESEARCH LTD GTE" ~ "C4C3R",
-        primepartner == "ASSOCIATION FOR REPRODUCTIVE  AND FAMILY HEALTH" ~ "ARFH",
-        primepartner == "PRO-HEALTH INTERNATIONAL" ~ "ProHI",
-        primepartner == "Management Sciences For Health, Inc." ~ "MHS",
-        primepartner == "APIN PUBLIC HEALTH INITIATIVE S LTD/GTE" ~ "APIN",
-        primepartner == "CATHOLIC CARITAS FOUNDATION O F NIGERIA" ~ "CARITAS",
+        prime_partner_name == "Family Health International" ~ "FHI 360",
+        prime_partner_name == "Chemonics International, Inc." ~ "Chemonics",
+        prime_partner_name == "JHPIEGO CORPORATION" ~ "JHPIEGO",
+        prime_partner_name == "SOCIETY FOR FAMILY HEALTH" ~ "SFH",
+        prime_partner_name == "HEARTLAND ALLIANCE" ~ "HEARTLAND",
+        prime_partner_name == "HEARTLAND ALLIANCE LTD-GTE" ~ "HALG",
+        prime_partner_name == "Heartland Alliance International, LLC" ~ "HAITL",
+        prime_partner_name == "CENTER FOR CLINICAL CARE AND CLINICAL RESEARCH LTD GTE" ~ "C4C3R",
+        prime_partner_name == "ASSOCIATION FOR REPRODUCTIVE  AND FAMILY HEALTH" ~ "ARFH",
+        prime_partner_name == "PRO-HEALTH INTERNATIONAL" ~ "PHI",
+        prime_partner_name == "Management Sciences For Health, Inc." ~ "MHS",
+        prime_partner_name == "APIN PUBLIC HEALTH INITIATIVE S LTD/GTE" ~ "APIN",
+        prime_partner_name == "CATHOLIC CARITAS FOUNDATION OF NIGERIA" ~ "CARITAS",
         # FY22 - New Partners
-        primepartner == 'Achieving Health Nigeria Initiative (AHINi)' ~ 'AHINi',
-        primepartner == 'Georgetown Global Health Nigeria (GGHN)' ~ 'GGHN',
-        primepartner == 'Health Systems Consult Limited (HSCL)' ~ 'HSCL',
-        primepartner == 'Center for Clinical Care and Clinical Research (CCCRN)' ~ 'CCCRN',
-        primepartner == 'Heartland Alliance Ltd GTE (HALG)' ~ 'HALG',
-        primepartner == 'AKS & CRS' ~ 'AKS & CRS',
+        prime_partner_name == 'Achieving Health Nigeria Initiative (AHINi)' ~ 'AHINi',
+        prime_partner_name == 'Georgetown Global Health Nigeria (GGHN)' ~ 'GGHN',
+        prime_partner_name == 'Health Systems Consult Limited (HSCL)' ~ 'HSCL',
+        prime_partner_name == 'Center for Clinical Care and Clinical Research (CCCRN)' ~ 'CCCRN',
+        prime_partner_name == 'Heartland Alliance Ltd GTE (HALG)' ~ 'HALG',
+        prime_partner_name == 'AKS & CRS' ~ 'AKS & CRS',
         # CDC
-        primepartner == "APIN PUBLIC HEALTH INITIATIVES LTD/GTE" ~ "APHI",
-        primepartner == "INSTITUTE OF HUMAN VIROLOGY" ~ "IHVN",
-        primepartner == "CATHOLIC CARITAS FOUNDATION OF NIGERIA" ~ "CCFN",
-        primepartner == "CENTRE FOR INTEGRATED HEALTH PROGRAMS" ~ "CIHP",
+        prime_partner_name == "APIN PUBLIC HEALTH INITIATIVES LTD/GTE" ~ "APHI",
+        prime_partner_name == "INSTITUTE OF HUMAN VIROLOGY" ~ "IHVN",
+        prime_partner_name == "CATHOLIC CARITAS FOUNDATION OF NIGERIA" ~ "CCFN",
+        prime_partner_name == "CENTRE FOR INTEGRATED HEALTH PROGRAMS" ~ "CIHP",
         # DOD
-        primepartner == "Henry M. Jackson Foundation For The Advancement Of Military Medicine, Inc., The" ~ "HJF",
-        TRUE ~ primepartner
+        prime_partner_name == "Henry M. Jackson Foundation For The Advancement Of Military Medicine, Inc., The" ~ "HJF",
+        TRUE ~ prime_partner_name
       )
     )
 }
