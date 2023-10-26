@@ -292,6 +292,13 @@
           axis.text = element_blank(),
           strip.text = element_text(size = 10, face = "bold"))
 
+    si_save(filename = file.path(dir_graphics, "USAID - FY23Q4 Enrollments categories.png"),
+              plot = last_plot(),
+              dpi = 320,
+              scale = 1.5,
+              width = 10,
+              height = 5)
+
   ## Enrollment trends
 
   df_art_cohorts_trend %>%
@@ -309,6 +316,13 @@
     si_style_ygrid() +
     theme(legend.title = element_blank(),
           strip.text = element_text(size = 10, face = "bold"))
+
+  si_save(filename = file.path(dir_graphics, "USAID - FY23Q4 enrollments by year"),
+          plot = last_plot(),
+          dpi = 320,
+          scale = 1.5,
+          width = 10,
+          height = 5)
 
   yr_labels <- df_art_cohorts_trend %>%
     distinct(date_sfy) %>%
@@ -330,6 +344,13 @@
     theme(legend.title = element_blank(),
           strip.text = element_text(size = 10, face = "bold"))
 
+  si_save(filename = file.path(dir_graphics, "USAID - FY23Q4 enrollments by state and year.png"),
+          plot = last_plot(),
+          dpi = 320,
+          scale = 1.5,
+          width = 10,
+          height = 5)
+
   ## Pickup pattern
 
   ## Lga level
@@ -346,14 +367,22 @@
     filter(date_lfy == "2023", date_lpd == "FY23Q4") %>%
     arrange(lga, desc(n)) %>%
     mutate(lga = paste0(lga, " (", state, ")")) %>%
-    ggplot(aes(x = date_last_pickup, y = lga, fill = n)) +
+    ggplot(aes(x = date_last_pickup, y = reorder(lga, n), fill = n)) +
     geom_tile(color = grey10k, linewidth = .1) +
     scale_x_date(breaks = "1 weeks") +
-    scale_fill_si(palette = "burnt_siennas") +
+    scale_fill_si(palette = "burnt_siennas", na.value = grey80k) +
     labs(x = "", y = "") +
-    si_style() +
+    si_style_nolines() +
     theme(legend.title = element_blank(),
-          legend.key.width = unit(3, "cm"))
+          legend.key.width = unit(3, "cm"),
+          legend.key.height = unit(.4, "cm"))
+
+  si_save(filename = file.path(dir_graphics, "USAID - FY23Q4 Akwa Ibom - ARV Pickup by lga.png"),
+          plot = last_plot(),
+          dpi = 320,
+          scale = 1.5,
+          width = 10,
+          height = 5)
 
   df_art_pickups %>%
     filter(state == "Akwa Ibom",
@@ -406,39 +435,84 @@
               date_lweek, date_last_pickup)) %>%
     filter(date_lfy == "2023", date_lpd == "FY23Q4") %>%
     mutate(facility_name = paste0(facility_name, " (", lga, ")")) %>%
-    ggplot(aes(x = date_last_pickup, y = facility_name, fill = n)) +
-    geom_tile() +
+    ggplot(aes(x = date_last_pickup, y = reorder(facility_name, n), fill = n)) +
+    geom_tile(color = grey10k, linewidth = .1) +
     scale_x_date(breaks = "1 weeks") +
-    scale_fill_si(palette = "burnt_siennas") +
+    scale_fill_si(palette = "burnt_siennas", na.value = trolley_grey_light) +
     labs(x = "", y = "") +
-    si_style() +
+    si_style_nolines() +
     theme(legend.title = element_blank(),
-          legend.key.width = unit(3, "cm"))
+          legend.key.width = unit(3, "cm"),
+          legend.key.height = unit(.4, "cm"))
 
-  ## Facility level
+  si_save(filename = file.path(dir_graphics, "USAID - FY23Q4 Akwa Ibom - ARV Pickup by site.png"),
+          plot = last_plot(),
+          dpi = 320,
+          scale = 1.5,
+          width = 10,
+          height = 5)
 
-  df_art_pickups %>%
+  ## top 10 facilities pickup pattern
+
+  fac_top10 <- df_art_pickups %>%
     filter(state == "Akwa Ibom",
+           lga %in% c("Mbo", "Eket", "Uyo"),
            str_detect(str_to_lower(status_current), "active"),
            between(as.integer(date_sfy), 2013, 2023),
-           between(as.integer(date_lfy), 2023, 2023)
-    ) %>% #distinct(orgunituid) %>%
+           date_lfy == "2023",
+           date_lpd == "FY23Q4"
+    ) %>%
     summarise(
       n = n_distinct(patientuid),
-      .by = c(orgunituid, date_lfy, date_lpd, date_lmonth2,
-              date_lweek, date_last_pickup)) %>%
-    #distinct(date_lfy) %>%
-    filter(date_lpd == "FY23Q4") %>%
-    arrange(orgunituid, date_lpd, date_lmonth2) %>%
-    ggplot(aes(x = date_last_pickup, y = orgunituid, fill = n)) +
-    geom_tile() +
-    scale_x_date(breaks = "1 weeks") +
-    scale_fill_si()
+      .by = c(lga, facility_name, orgunituid)) %>%
+    filter(n >= 1000) %>%
+    pull(orgunituid)
+
+  c(2013:2023) %>%
+    walk(function(.year) {
+
+      print(.year)
+
+      plot_pickup <- df_art_pickups %>%
+        filter(state == "Akwa Ibom",
+               lga %in% c("Mbo", "Eket", "Uyo"),
+               str_detect(str_to_lower(status_current), "active"),
+               date_sfy == .year,
+               date_lfy == "2023",
+               date_lpd == "FY23Q4"
+        ) %>%
+        summarise(
+          n = n_distinct(patientuid),
+          .by = c(lga, facility_name, date_lfy, date_lpd, date_last_pickup)
+        ) %>%
+        mutate(facility_name = paste0(facility_name, " (", lga, ")")) %>%
+        ggplot(aes(x = date_last_pickup,
+                   y = reorder(facility_name, n), fill = n)) +
+        geom_tile(color = grey10k, linewidth = .1) +
+        scale_x_date(breaks = "1 weeks") +
+        scale_fill_si(palette = "burnt_siennas",
+                      na.value = trolley_grey_light) +
+        labs(x = "", y = "",
+             title = "USAID - IKWA IBOM ARV PICKUP PATTERNS",
+             subtitle = glue::glue("ART start year = {.year}, Pickup Period = FY23Q4")) +
+        si_style_nolines() +
+        theme(plot.title = element_markdown(),
+              plot.subtitle = element_markdown(),
+              legend.title = element_blank(),
+              legend.key.width = unit(3, "cm"),
+              legend.key.height = unit(.4, "cm"))
+
+      si_save(filename = file.path(dir_graphics, glue::glue("USAID - Cohort {.year} - Reporting FY23Q4 for Akwa Ibom - ARV Pickup by high volume site.png")),
+              plot = plot_pickup,
+              dpi = 320,
+              scale = 1.5,
+              width = 10,
+              height = 5)
+    })
 
 
 
-
-
+  ### ----
   df_art_lmonths %>%
     ggplot(aes(x = date_lmonth, y = n)) +
     geom_col() +
