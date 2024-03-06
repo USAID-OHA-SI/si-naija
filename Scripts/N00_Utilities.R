@@ -1369,6 +1369,10 @@ clean_partners <- function(.data) {
         prime_partner_name == 'Center for Clinical Care and Clinical Research (CCCRN)' ~ 'CCCRN',
         prime_partner_name == 'Heartland Alliance Ltd GTE (HALG)' ~ 'HALG',
         prime_partner_name == 'AKS & CRS' ~ 'AKS & CRS',
+        # FY23 - Changes
+        prime_partner_name == 'ACHIEVING HEALTH NIGERIA INITIATIVE' ~ 'AHNI',
+        prime_partner_name == 'GEORGETOWN GLOBAL HEALTH NIGERIA LTD/GTE' ~ 'GGHN',
+        prime_partner_name == 'EXCELLENCE COMMUNITY EDUCATION  WELFARE SCHEME (ECEWS)' ~ 'ECEWS',
         # CDC
         prime_partner_name == "APIN PUBLIC HEALTH INITIATIVES LTD/GTE" ~ "APHI",
         prime_partner_name == "INSTITUTE OF HUMAN VIROLOGY" ~ "IHVN",
