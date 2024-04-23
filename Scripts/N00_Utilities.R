@@ -1772,3 +1772,61 @@ view_colors <- function(pal = "siei") {
 #   names() %>%
 #   str_subset(".*_div_.*", negate = T) %>%
 #   walk(~show_col(si_palettes[[.x]]))
+
+#' @title Convert sf Bounding Box to data frame
+#'
+#' @param spdf   Spatial Data Frame, preferably and sf object
+#' @param expand Expansion rate as a numerical value and in the spdf unit. Number of rows/columns to extend by.
+#'
+#' @return A data frame containing the bounds of latitude and longitude
+#'
+bbox_as_df <- function(spdf, expand = 0) {
+  # Extract bounding box
+  spext <- sf::st_bbox(spdf)
+
+  # Extend bbox if asked
+  if (expand > 0) {
+    spext <- terra::extend(terra::ext(spext), {{expand}})
+  }
+
+  # Convert bbox to data frame
+  spext %>%
+    base::as.list() %>%
+    tibble::as_tibble() %>%
+    tidyr::pivot_longer(cols = dplyr::everything(),
+                        names_to = "bound",
+                        values_to = "value") %>%
+    dplyr::mutate(axis = str_sub(bound, 1, 1),
+                  bound = str_remove(bound, "x|y")) %>%
+    tidyr::pivot_wider(names_from = axis, values_from = value) %>%
+    dplyr::rename(longitude = x, latitude = y)
+}
+
+#' @title Plot lat/lon
+#'
+gview_sites <- function(.locs,
+                        lat = "latitude",
+                        lon = "longitude") {
+
+  .locs %>%
+    ggplot(aes(x = !!sym(lon), y = !!sym(lat))) +
+    geom_point(size = 5, shape = 21,
+               color = grey10k,
+               fill = usaid_lightblue,
+               alpha = .8) +
+    coord_map() +
+    si_style() +
+    labs(x = "", y = "")
+}
+
+#' @title Export Map plot
+#'
+export_map <- function(mplot, name, ...) {
+  si_save(plot = mplot,
+          filename = file.path(dir_graphics, glue::glue("{name}.png")),
+          scale = 1.4,
+          dpi = 350,
+          width = 8,
+          height = 6,
+          ...)
+}

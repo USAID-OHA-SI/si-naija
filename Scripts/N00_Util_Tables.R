@@ -1,15 +1,38 @@
+##  PROJECT: SI Support for Nigeria
+##  AUTHOR:  B.Kagniniwa | USAID
+##  PURPOSE: PANO Data Extraction
+##  LICENCE: MIT
+##  DATE:    2021-11-22
+##  UPDATED: 2024-04-23
+
+# PACKAGES ----
+
+library(tidyverse)
+library(gagglr)
+
+# Params & Options ----
 
 options(digits = 7)
 
+dir_mer <- glamr::si_path("path_msd")
+
+file_ou1 <- dir_mer %>% return_latest("OU_IM_FY15")
+file_ou2 <- dir_mer %>% return_latest("OU_IM_FY22")
+
+meta <- get_metadata(file_ou2)
+
+# Data ----
 
 # USAID Targets
 df_usaid <- file_ou1 %>%
   c(file_ou2) %>%
   map_dfr(function(.x) {
     read_psd(.x) %>%
-      filter(str_detect(indicator, "TX_CURR|PrEP|PREV|OVC_SERV"),
-             str_detect(standardizeddisaggregate, "Total N|Age/Sex|KeyPop"),
-             fiscal_year == meta$curr_fy + 1)
+      filter(
+        fiscal_year == meta$curr_fy,
+        str_detect(indicator, "TX_CURR|PrEP|PREV|OVC_SERV"),
+        str_detect(standardizeddisaggregate, "Total N|Age/Sex|KeyPop"),
+      )
   })
 
 df_usaid %>%
@@ -18,8 +41,9 @@ df_usaid %>%
 
 
 df_usaid %>%
-  filter(indicator %in% c("TX_CURR", "OVC_SERV_UNDER_18", "PrEP_CT", "PrEP_NEW", "KP_PREV"),
-         standardizeddisaggregate %in% C("Total Numerator")) %>%
+  filter(indicator %in% c("TX_CURR", "OVC_SERV_UNDER_18",
+                          "PrEP_CT", "PrEP_NEW", "KP_PREV"),
+         standardizeddisaggregate %in% c("Total Numerator")) %>%
   summarise(targets = sum(targets, na.rm =T),
             .by = c(fiscal_year, funding_agency, indicator)) %>%
   arrange(indicator, desc(targets)) %>%
