@@ -31,9 +31,9 @@
 
   agency <- agencies %>% first()
 
-  curr_pd <- 2
+  curr_pd <- 1
 
-  curr_fy <- 2021
+  curr_fy <- 2024
 
   fiscal_years <- c(curr_fy - 1, curr_fy)
 
