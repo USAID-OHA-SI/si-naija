@@ -12,6 +12,86 @@ break_while <- function(x, p) {
   }
 }
 
+#' @title Round list element to 100%
+#'
+#'
+equal_parts <- function(x, percent = T) {
+
+  df_x <- tibble(value = x)
+
+  if (percent != TRUE | all(x < 1) == TRUE) {
+    df_x <- df_x %>%
+      mutate(value = value * 100)
+  }
+
+  df_x <- df_x %>%
+    mutate(flr = floor(value),
+           ext = value - flr,
+           rnd = round(value, 0),
+           idx = row_number())
+
+  t <- df_x %>% pull(rnd) %>% sum()
+  r <- 0
+  ad <- 1
+
+  if (t < 100) {
+    r <- 100 - t
+    ad <- 1
+  }
+  else if (t > 100) {
+    ad <- -1
+  }
+  else if (t == 100) {
+    ad <- 0
+  }
+
+  df_x <- df_x %>%
+    arrange(desc(ext)) %>%
+    mutate(
+      rnd = case_when(
+        row_number() <= r ~ rnd + ad,
+        TRUE ~ rnd
+      )
+    ) %>%
+    arrange(idx)
+
+  return(df_x$rnd)
+}
+
+#' @title Get Quantile
+#'
+#'
+get_quantiles <- function(vals,
+                          probs = seq(0, 1, 0.25),
+                          labels = NULL) {
+
+  breaks <- probs %>% map_dbl(~.x * 100) %>% paste0("Q", .)
+  lbls <- ifelse(is.null(labels), c("<25", "25-50", "50-75", "75+"), labels)
+
+  qqs <- vals %>%
+    quantile(probs = probs) %>%
+    as.list() %>%
+    as.list() %>%
+    as_tibble() %>%
+    set_names(nm = breaks) %>%
+    pivot_longer(cols = everything(), names_to = "breaks", values_to = "value")
+
+  print(qqs)
+
+  return(qqs)
+}
+
+
+#' @title Weighted distribution
+#'
+#' @param s   Sampled size to be distributed
+#' @param wts Distribution weights
+#'
+distribute_sample <- function(s, wts) {
+  round(s * wts / sum(wts, na.rm = T))
+  #s * wts / sum(wts, na.rm = T)
+}
+
 #' @title Calculate the binomial coefficient
 #' @note "n-choose-k" (given n and k)
 #'

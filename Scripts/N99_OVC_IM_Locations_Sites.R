@@ -41,6 +41,8 @@
   cntry <- "Nigeria"
   agency <- "USAID"
 
+  set.seed(234)
+
   file_sites <- dir_mer %>%
     return_latest("Genie-SiteByIMs-Nigeria", recursive = T)
 
@@ -93,10 +95,11 @@
     ) %>%
     rowwise() %>%
     mutate(
-      lqas = hyperPlan(N = sites) %>% unlist(use.names = F) %>% paste0(collapse = ", ")
+      lqas = hyperPlan(N = sites) %>% unlist(use.names = F) %>% paste0(collapse = ",")
     ) %>%
     ungroup() %>%
-    separate_wider_delim(lqas, delim = ", ", names = s_cols)
+    separate_wider_delim(lqas, delim = ",", names = s_cols) %>%
+    mutate(across(all_of(s_cols), ~as.integer(.x)))
 
   # Summary & Sampling of IM/IP Sites
   df_ovc_im_sites <- df_ovc %>%
@@ -108,10 +111,11 @@
     arrange(mech_name, desc(ovc_serv)) %>%
     rowwise() %>%
     mutate(
-      lqas = hyperPlan(N = sites) %>% unlist(use.names = F) %>% paste0(collapse = ", ")
+      lqas = hyperPlan(N = sites) %>% unlist(use.names = F) %>% paste0(collapse = ",")
     ) %>%
     ungroup() %>%
-    separate_wider_delim(lqas, delim = ", ", names = s_cols)
+    separate_wider_delim(lqas, delim = ",", names = s_cols) %>%
+    mutate(across(all_of(s_cols), ~as.integer(.x)))
 
   # Summary & Sampling of states Sites
   df_ovc_states_sites <- df_ovc %>%
@@ -123,14 +127,14 @@
     arrange(mech_name, desc(ovc_serv)) %>%
     rowwise() %>%
     mutate(
-      lqas = hyperPlan(N = sites) %>% unlist(use.names = F) %>% paste0(collapse = ", ")
+      lqas = hyperPlan(N = sites) %>% unlist(use.names = F) %>% paste0(collapse = ",")
     ) %>%
     ungroup() %>%
-    separate_wider_delim(lqas, delim = ", ", names = s_cols) %>%
+    separate_wider_delim(lqas, delim = ",", names = s_cols) %>%
     mutate(across(all_of(s_cols),
                   ~case_when(str_detect(.x, "NO.*") ~ NA_character_,
                              TRUE ~ .x))) %>%
-    mutate(across(all_of(s_cols), as.integer)) %>%
+    mutate(across(all_of(s_cols), ~as.integer(.x))) %>%
     mutate(
       sample = case_when(
         is.na(sample) ~ sites,
@@ -161,10 +165,67 @@
     ) %>%
     arrange(mech_name, psnu, desc(ovc_serv))
 
-  df_ovc_site_clients %>%
+  ## Stratifications
+
+  s_grps_lbls1 <- 1:4 %>% paste0("Q", .)
+  s_grps_lbls2 <- c("<25", "25-50", "50-75", "75+")
+
+  df_ovc_site_clients <- df_ovc_site_clients %>%
     filter(qualify == "Yes") %>%
-    pull(ovc_serv) %>%
-    quantile()
+    group_by(mech_code, mech_name) %>%
+    mutate(
+      im_site_group = cut(
+        ovc_serv,
+        breaks = get_quantiles(ovc_serv)$value,
+        labels = s_grps_lbls2,
+        include.lowest = T
+      )
+    ) %>%
+    ungroup() %>%
+    rowwise() %>%
+    mutate(
+      lqas = hyperPlan(N = ovc_serv) %>% unlist(use.names = F) %>% paste0(collapse = ",")
+    ) %>%
+    ungroup() %>%
+    separate_wider_delim(lqas, delim = ",", names = s_cols) %>%
+    mutate(across(all_of(s_cols),
+                  ~case_when(str_detect(.x, "NO.*") ~ NA_character_,
+                             TRUE ~ .x))) %>%
+    mutate(across(all_of(s_cols), ~as.integer(.x)))
+
+
+  df_ovc_site_clients %>% distinct(im_site_group)
+  df_ovc_site_clients %>% filter(is.na(im_site_group))
+
+  df_ovc_im_sites_sample <- df_ovc_im_sites %>%
+    distinct(mech_name) %>%
+    pull() %>%
+    map(function(.mech){
+
+      df_ovc_site_clients %>%
+        filter(mech_name == .mech) %>%
+        summarise(
+          total_sites = n(),
+          .by = c(mech_code, mech_name, im_site_group)
+        ) %>%
+        mutate(
+          sample_size_im = df_ovc_im_sites %>%
+            filter(mech_name == .mech) %>%
+            pull(sample),
+          sample_size_grp = distribute_sample(s = first(sample_size_im), wts = total_sites),
+          .by = c(mech_code, mech_name)
+        ) %>%
+        rowwise() %>%
+        mutate(
+          select_index = sample(total_sites, sample_size_grp) %>%
+            sort() %>%
+            paste0(collapse = ",")
+        ) %>%
+        ungroup()
+
+    }) %>%
+    bind_rows()
+
 
 # VIZ ====
 
@@ -182,10 +243,15 @@
   addWorksheet(wb, sheetName = "STATES")
   writeDataTable(wb, sheet = "STATES", x = df_ovc_states_sites)
 
-  addWorksheet(wb, sheetName = "CLIENTS")
-  writeDataTable(wb, sheet = "CLIENTS", x = df_ovc_site_clients)
+  addWorksheet(wb, sheetName = "SITES SAMPLE")
+  writeDataTable(wb, sheet = "SITES SAMPLE", x = df_ovc_im_sites_sample)
+
+  addWorksheet(wb, sheetName = "CLIENTS SAMPLE")
+  writeDataTable(wb, sheet = "CLIENTS SAMPLE", x = df_ovc_site_clients)
 
   saveWorkbook(wb, file = file_output, overwrite = T)
+
+  open_path(file_output)
 
   # dfs_list <- list(
   #   "USAID" = df_ovc_usaid_sites,
