@@ -3,7 +3,7 @@
 ##  PURPOSE: PANO Data Extraction
 ##  LICENCE: MIT
 ##  DATE:    2021-11-22
-##  UPDATED: 2023-03-31
+##  UPDATED: 2024-04-23
 
 # PACKAGES ----
 
@@ -14,6 +14,10 @@
 # DIRS ----
 
   dir_merdata <- si_path(type = "path_msd")
+
+  file_ou <- return_latest("OU_IM")
+
+  meta <- get_metadata(file_ou)
 
 # PANO ACCESS ----
 
@@ -29,6 +33,7 @@
 
   # Extract all global & Country Specific MSD
   pano_extract_msds(operatingunit = cntry,
+                    add_global = TRUE,
                     archive = TRUE,
                     dest_path = dir_merdata,
                     username = user,
@@ -39,12 +44,9 @@
 # CURRENT RUN OPTIONS ----
 
   msd_v <- "final"
-  fy <- 2022
+  fy <- 2024
   qtr <- 4
   org_level <- "psnu"
-
-  # OU
-  cntry <- "Nigeria"
 
 # DATA ----
 
