@@ -20,6 +20,7 @@
   library(scales)
   library(extrafont)
   library(tidytext)
+  library(patchwork)
 
   source("./Scripts/N00_Utilities.R")
 
@@ -162,6 +163,18 @@
     left_join(df_ovc_cov, by = c("uid" = "psnuuid")) %>%
     filter(!is.na(mech_name))
 
+  ## Add FY25 IMs
+
+  spdf_ovc_cov <- spdf_ovc_cov %>%
+    mutate(
+      mech_name_new = case_when(
+        psnu %in% c("Lagos", "Edo", "Cross River", "Akwa Ibom", "Bayelsa") ~ "THRIVE SOUTH",
+        psnu %in% c('Borno', 'Yobe', 'Bauchi', 'Jigawa', 'Taraba', 'Adamawa') ~ "THRIVE NORTH 1",
+        psnu %in% c('Kano', 'Niger', 'Kebbi', 'Sokoto', 'Zamfara') ~ "THRIVE NORTH 2",
+        TRUE ~ "Not Covered"
+      )
+    )
+
   # KP ----
 
   trans_states <- c("Kano", "Edo", "Taraba")
@@ -259,7 +272,8 @@
   # OVC Partners Coverage ----
 
   ovc_map <- bmap +
-    geom_sf(data = spdf_ovc_cov,
+    geom_sf(data = spdf_ovc_cov %>%
+              filter(orgunit_name %ni% c("Kwara")),
             aes(fill = mech_name),
             size = .3,
             color = grey30k) +
@@ -271,10 +285,14 @@
             colour = grey90k,
             fill = NA,
             size = .3) +
-    geom_sf_text(data = spdf_psnu,
+    geom_sf_text(data = spdf_psnu %>%
+                   filter(orgunit_name %in% spdf_ovc_cov$psnu),
+                 aes(label = str_replace(orgunit_name, " ", "\n")),
+                 size = 4, color = grey10k) +
+    geom_sf_text(data = spdf_psnu %>%
+                   filter(orgunit_name %ni% spdf_ovc_cov$psnu),
                  aes(label = orgunit_name),
-                 size = 2,
-                 color = grey90k) +
+                 size = 3, color = grey90k) +
     scale_fill_manual(
       values = c(
         "ICHSSA 1" = scooter,
@@ -296,6 +314,54 @@
              " - OVC PROGRAM COVERAGE",
              ".png")),
     plot = ovc_map,
+    width = 10,
+    height = 7,
+    dpi = 320,
+    scale = 1.2)
+
+  ovc_map2 <- bmap +
+    geom_sf(data = spdf_ovc_cov %>%
+              filter(orgunit_name %ni% c("Kwara")),
+            aes(fill = mech_name_new),
+            size = .3, color = grey30k) +
+    geom_sf(data = spdf_cntry,
+            colour = grey10k,
+            fill = NA, size = 1.5) +
+    geom_sf(data = spdf_cntry,
+            colour = grey90k,
+            fill = NA, size = .3) +
+    geom_sf_text(data = spdf_psnu %>%
+                   filter(orgunit_name %in% spdf_ovc_cov$psnu),
+                 aes(label = str_replace(orgunit_name, " ", "\n")),
+                 size = 4, color = grey10k) +
+    geom_sf_text(data = spdf_psnu %>%
+                   filter(orgunit_name %ni% spdf_ovc_cov$psnu),
+                 aes(label = orgunit_name),
+                 size = 3, color = grey90k) +
+    scale_fill_manual(
+      values = c(
+        "THRIVE SOUTH" = scooter,
+        "THRIVE NORTH 1" = burnt_sienna,
+        "THRIVE NORTH 2" = genoa
+      )) +
+    labs(x = "", y = "") +
+    si_style_map() +
+    theme(legend.title = element_blank())
+
+  ovc_map2
+
+  ovc_maps <- (ovc_map + ovc_map2)
+
+  ovc_maps
+
+  si_save(
+    filename = file.path(
+      dir_graphics,
+      paste0(meta$curr_pd, " to FY25 - ",
+             str_to_upper(cntry),
+             " - OVC PROGRAM COVERAGE Transition",
+             ".png")),
+    plot = ovc_maps,
     width = 10,
     height = 5,
     dpi = 320,
