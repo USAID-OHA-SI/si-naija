@@ -142,7 +142,7 @@
       )
     )
 
-
+  # Summary & Sampling of clients from sites
   df_ovc_site_clients <- df_ovc %>%
     filter(funding_agency == agency) %>%
     summarise(
@@ -165,7 +165,7 @@
     ) %>%
     arrange(mech_name, psnu, desc(ovc_serv))
 
-  ## Stratifications
+  ## Stratification
 
   s_grps_lbls1 <- 1:4 %>% paste0("Q", .)
   s_grps_lbls2 <- c("<25", "25-50", "50-75", "75+")
@@ -174,7 +174,7 @@
     filter(qualify == "Yes") %>%
     group_by(mech_code, mech_name) %>%
     mutate(
-      im_site_group = cut(
+      im_sites_group = cut(
         ovc_serv,
         breaks = get_quantiles(ovc_serv)$value,
         labels = s_grps_lbls2,
@@ -194,37 +194,75 @@
     mutate(across(all_of(s_cols), ~as.integer(.x)))
 
 
-  df_ovc_site_clients %>% distinct(im_site_group)
-  df_ovc_site_clients %>% filter(is.na(im_site_group))
+  df_ovc_site_clients %>% distinct(im_sites_group)
+  df_ovc_site_clients %>% filter(is.na(im_sites_group))
 
   df_ovc_im_sites_sample <- df_ovc_im_sites %>%
     distinct(mech_name) %>%
+    arrange(mech_name) %>%
     pull() %>%
     map(function(.mech){
+
+      cli::cli_alert_info("Sites sampling for {(.mech)} ...")
 
       df_ovc_site_clients %>%
         filter(mech_name == .mech) %>%
         summarise(
-          total_sites = n(),
-          .by = c(mech_code, mech_name, im_site_group)
+          im_grp_clients = sum(ovc_serv, na.rm = T),
+          im_grp_sites = n(),
+          .by = c(mech_code, mech_name, im_sites_group)
+        ) %>%
+        left_join(
+          x = .,
+          y = df_ovc_im_sites %>%
+            select(mech_name, im_sites = sites, im_sites_sample_size = sample),
+          by = "mech_name"
         ) %>%
         mutate(
-          sample_size_im = df_ovc_im_sites %>%
-            filter(mech_name == .mech) %>%
-            pull(sample),
-          sample_size_grp = distribute_sample(s = first(sample_size_im), wts = total_sites),
+          im_grp_sites_sample_size = distribute_sample(
+            s = first(im_sites_sample_size),
+            wts = im_grp_sites
+          ),
           .by = c(mech_code, mech_name)
         ) %>%
         rowwise() %>%
         mutate(
-          select_index = sample(total_sites, sample_size_grp) %>%
+          site_index = sample(
+              x = im_grp_sites,
+              size = im_grp_sites_sample_size,
+              replace = FALSE
+            ) %>%
             sort() %>%
             paste0(collapse = ",")
         ) %>%
         ungroup()
 
     }) %>%
-    bind_rows()
+    bind_rows() %>%
+    relocate(im_sites, im_sites_sample_size, .after = mech_name)
+
+  df_ovc_im_sites_sample_list <- df_ovc_im_sites_sample %>%
+    distinct(mech_code, mech_name, im_sites_group, site_index) %>%
+    separate_rows(site_index, sep = ",") %>%
+    mutate(site_index = as.integer(site_index),
+           site_dqa = 1)
+
+  df_ovc_sites_dqa <- df_ovc_site_clients %>%
+    select(-pop) %>%
+    arrange(mech_code, mech_name, desc(im_sites_group), desc(ovc_serv)) %>%
+    group_by(mech_code, mech_name, im_sites_group) %>%
+    mutate(site_index = row_number()) %>%
+    ungroup() %>%
+    left_join(
+      df_ovc_im_sites_sample_list,
+      by = c("mech_code", "mech_name", "im_sites_group", "site_index")
+    ) %>%
+    mutate(
+      site_dqa = case_when(
+        is.na(site_dqa) ~ 0,
+        TRUE ~ site_dqa
+      )
+    )
 
 
 # VIZ ====
@@ -232,22 +270,29 @@
   #
 
 # EXPORT ====
+
   wb <- createWorkbook()
 
-  addWorksheet(wb, sheetName = "USAID")
-  writeDataTable(wb, sheet = "USAID", x = df_ovc_usaid_sites)
+  # Agency based sample
+  #addWorksheet(wb, sheetName = "USAID")
+  #writeDataTable(wb, sheet = "USAID", x = df_ovc_usaid_sites)
 
-  addWorksheet(wb, sheetName = "PARTERS")
-  writeDataTable(wb, sheet = "PARTERS", x = df_ovc_im_sites)
+  # Partner based sample
+  sht_im <- "PARTNERS"
+  addWorksheet(wb, sheetName = sht_im)
+  writeDataTable(wb, sheet = sht_im, x = df_ovc_im_sites)
 
-  addWorksheet(wb, sheetName = "STATES")
-  writeDataTable(wb, sheet = "STATES", x = df_ovc_states_sites)
+  sht_im_sites <- "IM SITES SAMPLE"
+  addWorksheet(wb, sheetName = sht_im_sites)
+  writeDataTable(wb, sheet = sht_im_sites, x = df_ovc_im_sites_sample)
 
-  addWorksheet(wb, sheetName = "SITES SAMPLE")
-  writeDataTable(wb, sheet = "SITES SAMPLE", x = df_ovc_im_sites_sample)
+  sht_im_clients <- "IM CLIENTS SAMPLE BY SITE"
+  addWorksheet(wb, sheetName = sht_im_clients)
+  writeDataTable(wb, sheet = sht_im_clients, x = df_ovc_site_clients)
 
-  addWorksheet(wb, sheetName = "CLIENTS SAMPLE")
-  writeDataTable(wb, sheet = "CLIENTS SAMPLE", x = df_ovc_site_clients)
+  sht_sites_dqa <- "IM DQA SITES"
+  addWorksheet(wb, sheetName = sht_sites_dqa)
+  writeDataTable(wb, sheet = sht_sites_dqa, x = df_ovc_sites_dqa)
 
   saveWorkbook(wb, file = file_output, overwrite = T)
 
@@ -265,8 +310,11 @@
   df_ovc %>%
     write_csv(file = file.path(dataout, "Nigeria - OVC_SERV DQA Sampling.csv"))
 
-  df_ovc_sites %>%
+  df_ovc_im_sites_sample %>%
     write_csv(file = file.path(dataout, "Nigeria - OVC_SERV DQA Sampling sites.csv"))
 
   df_ovc_site_clients %>%
+    write_csv(file = file.path(dataout, "Nigeria - OVC_SERV DQA Sampling clients.csv"))
+
+  sht_sites_dqa %>%
     write_csv(file = file.path(dataout, "Nigeria - OVC_SERV DQA Sampling clients.csv"))
