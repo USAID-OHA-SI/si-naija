@@ -10,6 +10,7 @@
 # Libraries ====
 
   library(tidyverse)
+  library(readxl)
   library(gophr)
   library(grabr)
   library(glitr)
@@ -19,6 +20,7 @@
   library(scales)
   library(extrafont)
   library(tidytext)
+  library(patchwork)
 
   source("./Scripts/N00_Utilities.R")
 
@@ -39,8 +41,9 @@
   # Files
 
   file_nat <- si_path() %>% return_latest("NAT_SUBNAT")
-  file_psnu <- si_path() %>% return_latest("PSNU_IM_FY21.*_Nig")
+  file_psnu <- si_path() %>% return_latest("PSNU_IM_FY22.*_Nig")
   #file_site <- si_path() %>% return_latest("Site_IM_FY21.*_Nig")
+  file_tb <- dir_data %>% return_latest("Map.*New TB Activity")
 
   # Shapefile path
   file_shp <- dir_shp %>%
@@ -49,9 +52,7 @@
       recursive = TRUE
     )
 
-  get_metadata(file_psnu)
-
-  meta <- metadata
+  meta <- get_metadata(file_psnu)
 
   # Set Params
 
@@ -65,9 +66,16 @@
 
   df_msd_psnu <- file_psnu %>% read_psd()
 
+  file_tb %>% excel_sheets()
+
+  df_tb_states <- read_excel(path = file_tb, sheet = 1) %>%
+    janitor::clean_names()
+
+  df_tb_states %>% glimpse()
+
   # SPATIAL DATA
 
-  terr <- gisr::get_raster(path = dir_ras)
+  terr <- gisr::get_raster(folderpath = dir_ras)
 
   spdf_pepfar <- file_shp %>% sf::read_sf()
 
@@ -86,10 +94,10 @@
   # Org units attributes
 
   df_attrs <- grabr::datim_orgunits(
-      cntry = cntry,
-      username = datim_user(),
-      password = datim_pwd()
-    )
+    cntry = cntry,
+    username = datim_user(),
+    password = datim_pwd()
+  )
 
   df_attrs <- df_levels %>%
     filter(countryname == cntry) %>%
@@ -122,6 +130,12 @@
   spdf_psnu <- spdf_pepfar %>%
     filter(orgunit_label == "prioritization")
 
+  # TB - New Activity Coverage ----
+
+  spdf_tb <- spdf_psnu %>%
+    left_join(df_tb_states, by = c("orgunit_name" = "states")) %>%
+    filter(!is.na(regions))
+
   # OVC ----
 
   df_ovc <- df_msd_psnu %>%
@@ -148,6 +162,18 @@
   spdf_ovc_cov <- spdf_psnu %>%
     left_join(df_ovc_cov, by = c("uid" = "psnuuid")) %>%
     filter(!is.na(mech_name))
+
+  ## Add FY25 IMs
+
+  spdf_ovc_cov <- spdf_ovc_cov %>%
+    mutate(
+      mech_name_new = case_when(
+        psnu %in% c("Lagos", "Edo", "Cross River", "Akwa Ibom", "Bayelsa") ~ "THRIVE SOUTH",
+        psnu %in% c('Borno', 'Yobe', 'Bauchi', 'Jigawa', 'Taraba', 'Adamawa') ~ "THRIVE NORTH 1",
+        psnu %in% c('Kano', 'Niger', 'Kebbi', 'Sokoto', 'Zamfara') ~ "THRIVE NORTH 2",
+        TRUE ~ "Not Covered"
+      )
+    )
 
   # KP ----
 
@@ -208,15 +234,46 @@
     countries = spdf_cntry,
     adm0 = spdf_cntry,
     adm1 = spdf_psnu,
-    mask = TRUE
+    mask = TRUE,
+    terr = terr
   )
 
   bmap %>% print()
 
+  # TB New Activities coverage
+
+  tb_map <- bmap +
+    geom_sf(data = spdf_tb, aes(fill = regions), size = .3, color = grey30k) +
+    geom_sf(data = spdf_cntry,
+            colour = grey10k, fill = NA, size = 1.5) +
+    geom_sf(data = spdf_cntry,
+            colour = grey90k, fill = NA, size = .3) +
+    geom_sf_text(data = spdf_psnu,
+                 aes(label = orgunit_name),
+                 size = 3,
+                 color = usaid_black) +
+    scale_fill_manual(
+      values = c("Region 1" = scooter, "Region 2" = old_rose)) +
+    labs(x = "", y = "") +
+    si_style_map() +
+    theme(legend.title = element_blank())
+
+  si_save(
+    filename = file.path(
+      dir_graphics,
+      paste0(str_to_upper(cntry),
+             " - TB New Activities Coverage.png")),
+    plot = tb_map,
+    width = 10,
+    height = 7,
+    dpi = 320,
+    scale = 1.1)
+
   # OVC Partners Coverage ----
 
   ovc_map <- bmap +
-    geom_sf(data = spdf_ovc_cov,
+    geom_sf(data = spdf_ovc_cov %>%
+              filter(orgunit_name %ni% c("Kwara")),
             aes(fill = mech_name),
             size = .3,
             color = grey30k) +
@@ -228,10 +285,14 @@
             colour = grey90k,
             fill = NA,
             size = .3) +
-    geom_sf_text(data = spdf_psnu,
+    geom_sf_text(data = spdf_psnu %>%
+                   filter(orgunit_name %in% spdf_ovc_cov$psnu),
+                 aes(label = str_replace(orgunit_name, " ", "\n")),
+                 size = 4, color = grey10k) +
+    geom_sf_text(data = spdf_psnu %>%
+                   filter(orgunit_name %ni% spdf_ovc_cov$psnu),
                  aes(label = orgunit_name),
-                 size = 2,
-                 color = grey90k) +
+                 size = 3, color = grey90k) +
     scale_fill_manual(
       values = c(
         "ICHSSA 1" = scooter,
@@ -253,6 +314,54 @@
              " - OVC PROGRAM COVERAGE",
              ".png")),
     plot = ovc_map,
+    width = 10,
+    height = 7,
+    dpi = 320,
+    scale = 1.2)
+
+  ovc_map2 <- bmap +
+    geom_sf(data = spdf_ovc_cov %>%
+              filter(orgunit_name %ni% c("Kwara")),
+            aes(fill = mech_name_new),
+            size = .3, color = grey30k) +
+    geom_sf(data = spdf_cntry,
+            colour = grey10k,
+            fill = NA, size = 1.5) +
+    geom_sf(data = spdf_cntry,
+            colour = grey90k,
+            fill = NA, size = .3) +
+    geom_sf_text(data = spdf_psnu %>%
+                   filter(orgunit_name %in% spdf_ovc_cov$psnu),
+                 aes(label = str_replace(orgunit_name, " ", "\n")),
+                 size = 4, color = grey10k) +
+    geom_sf_text(data = spdf_psnu %>%
+                   filter(orgunit_name %ni% spdf_ovc_cov$psnu),
+                 aes(label = orgunit_name),
+                 size = 3, color = grey90k) +
+    scale_fill_manual(
+      values = c(
+        "THRIVE SOUTH" = scooter,
+        "THRIVE NORTH 1" = burnt_sienna,
+        "THRIVE NORTH 2" = genoa
+      )) +
+    labs(x = "", y = "") +
+    si_style_map() +
+    theme(legend.title = element_blank())
+
+  ovc_map2
+
+  ovc_maps <- (ovc_map + ovc_map2)
+
+  ovc_maps
+
+  si_save(
+    filename = file.path(
+      dir_graphics,
+      paste0(meta$curr_pd, " to FY25 - ",
+             str_to_upper(cntry),
+             " - OVC PROGRAM COVERAGE Transition",
+             ".png")),
+    plot = ovc_maps,
     width = 10,
     height = 5,
     dpi = 320,

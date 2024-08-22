@@ -88,8 +88,34 @@ get_quantiles <- function(vals,
 #' @param wts Distribution weights
 #'
 distribute_sample <- function(s, wts) {
-  round(s * wts / sum(wts, na.rm = T))
-  #s * wts / sum(wts, na.rm = T)
+  #round(s * wts / sum(wts, na.rm = T))
+  ds <- s * wts / sum(wts, na.rm = T)
+
+  # Redistribute excess to highest decimal point
+  ds_f <- floor(ds)
+  ds_r <- round(ds)
+  ds_d <- sum(ds_r) - s
+
+  # Get the index of sorted values
+  ds_oi <- ds %>%
+    set_names(x = ., nm = 1:length(.)) %>%
+    sort(decreasing = T) %>%
+    names() %>%
+    as.integer()
+
+  # If there is access, redistribute it to the highest only
+  if (ds_d > 0) {
+
+    1:ds_d %>%
+      walk(function(.x){
+        ds_f[ds_oi[.x]] <<- ds_f[ds_oi[.x]] + 1
+      })
+
+    return(ds_f)
+  }
+  else {
+    round(ds)
+  }
 }
 
 #' @title Calculate the binomial coefficient
@@ -154,7 +180,7 @@ hyperTail <- function (k, m, n, N, tail = 'lower') {
   return(x)
 }
 
-#' @title Find sampling plan matching the entered data
+#' @title Find sampling plan for a pop size
 #'
 #' @param N Population size
 #' @param upperP Upper threshold
@@ -196,17 +222,12 @@ hyperPlan <- function(N,
   H = round(upperP * N)
   L = round(lowerP * N)
 
-  #usethis::ui_info("Prevalence boundaries: \nHigh Prevalence: {H} \nLow Prevalence: {L}")
-
   # Starting values for sampling plan
 
   d <- 0             # Acceptance number
   n <- d + 1         # Sample size
   oAlpha <- 1.0      # Alpha error for candidate sampling plan
   oBeta <- 1.0       # Beta error for candidate sampling plan
-
-  #sValues <- glue::glue("Starting values: \nd = {d}, n = {n}, oAlpha = {oAlpha}, oBeta = {oBeta}")
-  #usethis::ui_info(sValues)
 
   # Search for a solution
 
