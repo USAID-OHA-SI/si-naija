@@ -7,12 +7,9 @@
 ##
 
 ## Libraries ----
-  library(tidyverse)
-  library(gophr)
-  library(glamr)
-  library(glitr)
-  library(scales)
-  library(extrafont)
+  # library(tidyverse)
+  # library(gophr)
+  # library(glamr)
 
 ## Global Variables ----
 
