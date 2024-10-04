@@ -20,12 +20,6 @@
 
 # Params
 
-  ref_id <- "f2ee4998"
-  ou <-  "Nigeria"
-  cntry <- ou
-  agency <- "USAID"
-
-
 # Functions  ====
 
   #' @title Validate color input
@@ -280,6 +274,11 @@
           grp1 == min(grp1) & grp2 == min(grp2) ~ "LL",
           grp1 == max(grp1) & grp2 == min(grp2) ~ "HL",
           TRUE ~ NA_character_
+        ),
+        label_color = case_when(
+          label == "HH" ~ grey10k,
+          label %in% c("LL", "LH", "HL") ~ grey90k,
+          TRUE ~ grey10k
         )
       ) %>%
       dplyr::relocate(col1, .after = grp1) %>%
@@ -319,8 +318,9 @@
       .legend <- .colors %>%
         ggplot2::ggplot(aes(x = grp1, y = grp2, fill = value, label = label)) +
         ggplot2::geom_tile() +
-        ggplot2::geom_text(color = grey90k, fontface = "bold") +
+        ggplot2::geom_text(aes(color = label_color), size = 2, fontface = "bold") +
         ggplot2::scale_fill_identity() +
+        ggplot2::scale_color_identity() +
         ggplot2::labs(x = "Higher -->", y = "Higher -->") +
         ggplot2::coord_fixed() +
         ggplot2::theme_void()
@@ -330,8 +330,9 @@
       .legend <- .colors %>%
         ggplot2::ggplot(aes(x = grp1, y = grp2, fill = value, label = label)) +
         ggplot2::geom_tile() +
-        ggplot2::geom_text(color = grey90k, fontface = "bold") +
+        ggplot2::geom_text(aes(color = label_color), fontface = "bold") +
         ggplot2::scale_fill_identity() +
+        ggplot2::scale_color_identity() +
         ggplot2::labs(x = "Higher -->", y = "Higher -->") +
         ggplot2::coord_fixed() +
         ggplot2::theme_void()
@@ -359,17 +360,17 @@
   pal6 <- rcartocolor::carto_pal(5, "RedOr")
   pal7 <- rcartocolor::carto_pal(3, "TealGrn")
 
-  df_colors <- get_bivariate_colors(cols1 = pal1, cols2 = pal2)
-  df_colors3 <- get_bivariate_colors(cols1 = pal3, cols2 = pal2)
-  df_colors4 <- get_bivariate_colors(cols1 = pal4, cols2 = pal2)
-  df_colors5 <- get_bivariate_colors(cols1 = pal5, cols2 = pal7)
-  df_colors6 <- get_bivariate_colors(cols1 = pal6, cols2 = pal7)
-
-  df_colors %>% get_bivariate_legend("first")
-  df_colors %>% get_bivariate_legend("second")
-  df_colors %>% get_bivariate_legend("both")
-
-
+  # df_colors <- get_bivariate_colors(cols1 = pal1, cols2 = pal2)
+  # df_colors3 <- get_bivariate_colors(cols1 = pal3, cols2 = pal2)
+  # df_colors4 <- get_bivariate_colors(cols1 = pal4, cols2 = pal2)
+  # df_colors5 <- get_bivariate_colors(cols1 = pal5, cols2 = pal7)
+  # df_colors6 <- get_bivariate_colors(cols1 = pal6, cols2 = pal7)
+  #
+  # df_colors %>% get_bivariate_legend("first")
+  # df_colors %>% get_bivariate_legend("second")
+  # df_colors %>% get_bivariate_legend("both")
+  #
+  #
   # (
   #   df_colors %>% get_bivariate_legend("first") +
   #     df_colors %>% get_bivariate_legend("second") +
@@ -399,4 +400,4 @@
   #     df_colors6 %>% get_bivariate_legend("second") +
   #     df_colors6 %>% get_bivariate_legend("both")
   # )
-
+  #
